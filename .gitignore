@@ -1,0 +1,27 @@
+# Rust 构建产物
+/target/
+**/*.rs.bk
+
+# 打包产物
+/dist/
+packaging/**/pkg/
+packaging/**/src/
+packaging/**/*.tar.gz
+packaging/**/*.pkg.tar.*
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# 本地交叉编译链接器路径
+.zigcc-linker
+
+# 签名私钥：只存在于本地 keys-private/ 与 CI Secrets，任何情况下不进仓库
+keys-private/
+*.secret.asc
+*.rsa
+# abuild-sign shim 的临时目录（CI 里把私钥与待签文件搬进来再挂给容器）
+.apk-sign-key/
+.apk-sign-work/

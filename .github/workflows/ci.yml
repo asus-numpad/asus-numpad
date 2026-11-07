@@ -1,0 +1,195 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# 失败时要把 build.log 推到 ci-log-<distro> 分支；默认 token 是只读，会 403
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # 逻辑层不依赖 Linux，单测在这里跑最快
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: 生成锁文件（若仓库里还没有）
+        run: |
+          if [ ! -f Cargo.lock ]; then cargo generate-lockfile; fi
+      - name: cargo test
+        run: cargo test --all-targets
+      - name: shellcheck 打包脚本
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck
+          shellcheck -x -S warning \
+              packaging/build.sh \
+              packaging/lib/common.sh \
+              packaging/deb/make-deb.sh packaging/rpm/make-rpm.sh packaging/arch/make-arch.sh \
+              packaging/alpine/make-alpine.sh packaging/tarball/make-tarball.sh \
+              packaging/arch/PKGBUILD packaging/arch/asus-numpad.install \
+              packaging/alpine/APKBUILD \
+              tools/repo-gen.sh
+      - name: shellcheck 维护脚本（POSIX sh）
+        run: shellcheck -s sh -S warning packaging/deb/postinst packaging/deb/prerm packaging/deb/postrm
+      # 只把 correctness 级别当门槛，样式类提示留给后续清理
+      - name: cargo clippy
+        run: |
+          rustup component add clippy
+          cargo clippy --all-targets -- -D warnings
+      - name: cargo fmt
+        run: |
+          rustup component add rustfmt
+          cargo fmt --all -- --check
+
+  # 每个发行版在自己的容器里出包，这是最贴近用户的验证方式
+  package:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 发行版自带的 rustc 版本不可控（debian bookworm 只有 1.63，低于 MSRV 1.75），
+          # 出包这条线统一用 rustup 装 stable，与 release 走同一套环境。
+          - distro: debian
+            image: debian:bookworm
+            setup: >-
+              apt-get update &&
+              apt-get install -y --no-install-recommends
+              curl ca-certificates git dpkg-dev fakeroot build-essential &&
+              curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable &&
+              ln -sf "$HOME/.cargo/bin/"* /usr/local/bin/
+            target: deb
+          - distro: ubuntu
+            image: ubuntu:24.04
+            setup: >-
+              apt-get update &&
+              apt-get install -y --no-install-recommends
+              curl ca-certificates git dpkg-dev build-essential &&
+              curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable &&
+              ln -sf "$HOME/.cargo/bin/"* /usr/local/bin/
+            target: deb
+          - distro: fedora
+            image: fedora:latest
+            setup: >-
+              dnf install -y curl ca-certificates git gcc gcc-c++ make rpm-build systemd-rpm-macros tar gzip &&
+              curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable &&
+              ln -sf "$HOME/.cargo/bin/"* /usr/local/bin/
+            target: rpm
+          # arch 直接吃发行版自带的 rust 包：makepkg 要以 builder 身份跑，
+          # 而 rustup 的 toolchain 是按 HOME 定位的，跨用户必踩「no default toolchain」
+          - distro: arch
+            image: archlinux:latest
+            setup: >-
+              pacman -Sy --noconfirm --needed base-devel rust curl git libarchive
+            target: arch
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: 安装构建依赖
+        run: ${{ matrix.setup }}
+      - name: 准备构建用户（arch）
+        if: matrix.distro == 'arch'
+        run: |
+          set -eux
+          id builder >/dev/null 2>&1 || useradd -m builder
+          mkdir -p /etc/sudoers.d
+          printf 'builder ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/builder
+          chmod 0440 /etc/sudoers.d/builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+      - name: 构建 ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -o pipefail -x
+          # 先接管 stdout/stderr，后面任何一条命令提前失败也留下完整日志
+          exec > >(tee build.log) 2>&1
+          chmod +x packaging/build.sh
+          find packaging -mindepth 2 -maxdepth 2 -name 'make-*.sh' -exec chmod +x {} +
+          if [ "${{ matrix.distro }}" = arch ]; then
+            # makepkg 拒绝 root，整条链路切到 builder
+            su builder -c "cd '$GITHUB_WORKSPACE' && ./packaging/build.sh --out dist arch"
+          else
+            ./packaging/build.sh --out dist ${{ matrix.target }}
+          fi
+
+      # Actions 日志在没有 token 时读不到，失败就把构建日志推到独立分支，事后可复盘
+      - name: 失败回传日志（${{ matrix.distro }}）
+        if: failure()
+        run: |
+          set -euo pipefail
+          test -f build.log || { echo "没有 build.log，跳过回传"; exit 0; }
+          mkdir -p /tmp/logpush
+          cp build.log /tmp/logpush/
+          cd /tmp/logpush
+          git init -q
+          git config --global --add safe.directory '*'
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com add -A
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "ci log ${{ matrix.distro }}"
+          # 单写 refspec 才不会被 git 当成不完整的 refname
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" \
+            "HEAD:refs/heads/ci-log-${{ matrix.distro }}"
+      - name: 校验产物
+        run: |
+          ls -l dist/
+          case "${{ matrix.target }}" in
+            deb)  dpkg-deb --info dist/*.deb && dpkg-deb --contents dist/*.deb ;;
+            rpm)  rpm -qip dist/*.rpm && rpm -qlp dist/*.rpm ;;
+            arch) bsdtar -tvf dist/*.pkg.tar.zst | head -50 ;;
+          esac
+      # 容器里的 git push 在没装 git 的镜像上会失败，artifact 这条路不依赖 git
+      - name: 保存构建日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.distro }}
+          path: build.log
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: asus-numpad-${{ matrix.distro }}
+          path: dist/*
+          if-no-files-found: error
+
+  # 统一把各容器的构建日志推到 ci-logs 分支：Actions 日志在没有 token 时读不到，
+  # 这是事后复盘唯一可靠的通道
+  diagnose:
+    needs: [package]
+    if: always()
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: logs-*
+          path: logs
+      - name: 推到 ci-logs 分支
+        run: |
+          set -euo pipefail
+          mkdir -p ci-logs
+          cp -a logs/. ci-logs/ 2>/dev/null || true
+          find ci-logs -type f | sort
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan ci-logs-tmp
+          git add -A ci-logs
+          if git commit -m "ci: 出包日志 ${{ github.run_id }}"; then
+            git push -f origin HEAD:ci-logs
+          else
+            echo "没有日志可推"
+          fi

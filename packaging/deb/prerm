@@ -1,0 +1,18 @@
+#!/bin/sh
+# dpkg prerm：升级/卸载前先停服务。先停再删二进制，避免留下半个进程抓着触摸板。
+set -e
+
+case "$1" in
+    remove|deconfigure)
+        if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+            systemctl stop asus-numpad.service >/dev/null 2>&1 || true
+        fi
+        ;;
+    upgrade|failed-upgrade)
+        if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+            systemctl stop asus-numpad.service >/dev/null 2>&1 || true
+        fi
+        ;;
+esac
+
+exit 0

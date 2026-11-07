@@ -1,0 +1,24 @@
+#!/bin/sh
+# dpkg postrm：purge 时清掉配置目录、日志级联单元。
+# 刻意不删 /etc/asus-numpad —— 那是 conffiles 管的，dpkg 自己会处理，
+# 手工再删一次反而会在 upgrade→remove 链路上把用户配置提前抹掉。
+set -e
+
+case "$1" in
+    purge)
+        rm -rf /etc/asus-numpad
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl disable asus-numpad.service >/dev/null 2>&1 || true
+        fi
+        if command -v udevadm >/dev/null 2>&1; then
+            udevadm control --reload-rules >/dev/null 2>&1 || true
+        fi
+        ;;
+    remove)
+        if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+            systemctl daemon-reload >/dev/null 2>&1 || true
+        fi
+        ;;
+esac
+
+exit 0

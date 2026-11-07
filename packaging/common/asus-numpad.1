@@ -1,0 +1,192 @@
+.TH ASUS-NUMPAD 1 "2026-11-04" "asus-numpad 1.1.0" "用户命令"
+.SH 名称
+asus-numpad \- ASUS 触摸板数字小键盘（NumberPad）用户态驱动
+.SH 概要
+.B asus-numpad
+.RI [ 选项 ] " " run
+.br
+.B asus-numpad
+.RI [ 选项 ] " " check
+.br
+.B asus-numpad
+.RI [ 选项 ] " " dump
+.br
+.B asus-numpad
+.RI [ 选项 ] " " bright
+.RI [ 0|1..4|up|down|cycle|status ]
+.br
+.B asus-numpad
+.RI [ 选项 ] " " bright " follow " on|off
+.br
+.B asus-numpad
+.RI [ 选项 ] " " lang
+.RI [ zh-CN|zh-TW|en|auto ]
+.br
+.B asus-numpad
+.RI [ 选项 ] " " sku
+.RI [ list|auto|机型 id ]
+.SH 描述
+在 ASUS 笔记本的触摸板上模拟数字小键盘。参数取自官方
+.I AsusNUMPADFilter.inf
+中 AlgoParameters 的原值（帧长 8ms、0.1mm 单位、手势阈值 4838µm 等），
+用 evdev/uinput 在用户态实现，不替换内核模块。
+.PP
+长按触摸板右上角图标区约 496ms（62 帧 × 8ms）触发 NumLock；进入数字键盘后，
+同一片区域按 5 行 4 列映射数字键，手势可触发计算器，多指滑动滚动页面。
+.PP
+冰刃双屏（GX550/GX551/GX650）与灵耀双屏（UX582/UX482）的触摸板竖排在键盘右侧，
+数字模式由键盘上的专用键切换，不经长按图标区；长按在这类机器上不触发模式切换。
+.SH 命令
+.TP
+.B run
+作为服务运行：抓取触摸板、按数字键盘规则出键。systemd 单元调用的就是这个。
+.TP
+.B check
+自检：打印设备、坐标范围、几何换算、NumLock 通道与背光通道，不修改任何状态。
+背光部分会逐个列出 \fI/dev/hidraw*\fP 的 \fIvid:pid\fP、是否带 FEATURE 报告 0x0d、
+优先级分值 rank 以及驱动最终会选哪个节点，并给出 i2c 兜底探测结果（0x38 / 0x15）。
+换机型时先跑这一条，把输出反馈即可定位问题。
+.TP
+.B dump
+打印触摸板原始事件流（排查手势识别问题用）。Ctrl-C 结束。
+.TP
+.BI bright " 0|1..N"
+手动固定档：0 熄灭，1 最暗，N 最亮（默认 N=4）。档位由硬件全档表线性等分得到，
+默认 8 档取 4 个等分点（0x41 / 0x43 / 0x46 / 0x48），可用配置项
+\fImanual_brightness_levels\fP 自定义档表（上限为 \fIbrightness_levels\fP 的长度）。
+写入配置文件后立即下发一次，服务在跑时自动重启让新档常驻。
+手动选档等价于关闭「跟随键盘背光」。
+.TP
+.BI bright " up|down|cycle"
+逐档变亮 / 变暗 / 全部档位循环（1→…→N→1）。\fIup\fP 封顶 N，\fIdown\fP 最低 1。
+.TP
+.BI bright " follow " on|off
+是否跟随键盘背光：\fIon\fP 恢复跟随，\fIoff\fP 固定在当前手动档。
+.TP
+.B bright status
+打印当前模式、手动档、档位映射与键盘背光实测值，只读。
+.TP
+.B lang
+不带参数时打印当前语言、语言来源、可用语言与语言文件所在目录。
+.TP
+.BI lang " zh-CN|zh-TW|en"
+把界面语言写入配置文件，下次运行生效；支持 \fIzh_CN\fP、\fIcn\fP、\fIzh-Hant\fP、
+\fItw\fP、\fIenglish\fP 等宽松写法。
+.TP
+.B lang auto
+删掉语言设置，改为跟随系统 locale（\fILC_ALL\fP > \fILC_MESSAGES\fP > \fILANG\fP > \fILANGUAGE\fP）。
+.TP
+.B sku
+打印本机识别到的机型配置、判定依据（DMI 身份与触摸板模组）。机型在运行时自动识别，
+正常情况不需要手动干预。
+.TP
+.B sku list
+列出全部可选的机型 id 与对应机型。
+.TP
+.BI sku " 机型 id"
+手动指定机型，写进配置文件长期生效，优先于自动识别。用于虚拟机、白牌机箱、BIOS 占位串
+等读不到正确硬件信息的机器。
+.TP
+.B sku auto
+删掉手动指定的机型，恢复自动识别。
+.SH 选项
+.TP
+.BI \-\-config " 文件"
+配置路径。普通用户默认 \fI~/.config/asus-numpad/asus-numpad.json\fP
+（遵循 \fBXDG_CONFIG_HOME\fP），root 默认 \fI/etc/asus-numpad/asus-numpad.json\fP。
+.TP
+.BI \-\-lang " zh-CN|zh-TW|en|auto"
+本次运行的界面语言，临时覆盖配置文件，不写盘。
+.TP
+.BI \-\-sku " 机型 id"
+本次运行强制使用该机型配置，临时覆盖自动识别与配置文件，不写盘。
+.TP
+.BI \-\-device " /dev/input/eventX"
+指定触摸板事件设备，跳过自动探测。
+.TP
+.BI \-\-keyboard " /dev/input/eventX"
+指定键盘设备（读 NumLock 指示灯状态）。
+.TP
+.BI \-\-led " auto|hidraw|i2c|none"
+背光通道，默认 auto。
+.TP
+.BI \-\-hidraw " /dev/hidrawN"
+强制指定背光 FEATURE 节点，跳过自动探测；仅在自动探测选错时需要。
+.TP
+.B \-\-no\-follow\-brightness
+关闭"数字区亮度跟随键盘背光"，点亮时按手动固定档（等价于 \fBbright follow off\fP）。
+.TP
+.BI \-\-numlock " sync|toggle|off"
+NumLock 联动策略，默认 toggle。
+.TP
+.BI \-\-mixed\-mode " auto|on|off"
+混合模式：数字键与光标共存（需要 /dev/uinput），默认 auto。
+.TP
+.BI \-\-key\-mode " keypad|digits"
+数字键键位风格，默认 keypad。
+.TP
+.BI \-\-layout " 代号"
+布局代号，目前仅有 GH3XLNDZ 的有线框数据。
+.TP
+.B \-\-allow\-unverified
+放行「未收录键表的同族布局」。默认情况下布局支持级别为 family（同结构未收录）
+或 unsupported（键表结构不同、套用会按错键）时驱动拒绝启动；加本开关可强行运行，
+仅建议对 family 使用，并配合 \fBcheck\fP 逐键核对。
+.TP
+.B \-\-grab
+抓取触摸板，数字区按键不透传（默认）。
+.TP
+.B \-\-no\-grab
+不抓取触摸板；数字区点击会穿透到桌面。
+.TP
+.B \-\-dump-config
+打印生效配置（含官方参数原值）后退出。
+.TP
+.B \-v, \-\-verbose
+打印几何报告与状态变化。
+.SH 文件
+.TP
+.I ~/.config/asus-numpad/asus-numpad.json
+用户配置文件，默认写入位置，不需要 root。
+.TP
+.I /etc/asus-numpad/asus-numpad.json
+系统级配置（root 使用）。普通用户首次运行时，若用户级配置尚不存在，这里的内容会自动
+迁移到用户级路径（源文件保留）。
+.TP
+.I /etc/asus-numpad.json, /etc/rog-numpad.json
+旧版配置路径。启动时若用户级配置尚不存在而这两个文件存在，内容会被迁移到用户级路径
+（旧文件保留）。
+.TP
+.I /usr/lib/systemd/user/asus-numpad.service
+systemd 用户单元，随登录会话启动，不需要 root。手工控制：
+\fBsystemctl --user status|restart|stop asus-numpad\fP。
+.TP
+.I /usr/lib/udev/rules.d/99-asus-numpad.rules
+权限规则。
+.TP
+.I /usr/share/asus-numpad/lang/zh_CN.lang
+.I /usr/share/asus-numpad/lang/zh_TW.lang
+.I /usr/share/asus-numpad/lang/en.lang
+界面文案。格式为 \fB键 = 文案\fP，\fB#\fP 开头为注释，值内支持 \fB\\n\fP 换行、
+\fB\\t\fP 制表符、\fB\\s\fP 空格；缺键时按「外部文件 → 同语言内置 → 英文内置 → 键名」回落。
+.TP
+.I ~/.config/asus-numpad/lang/
+用户级覆盖目录，优先级最高，包升级不会覆盖，且不需要 root。
+.TP
+.I /etc/asus-numpad/lang/
+系统级覆盖目录，优先级高于 \fI/usr/share/asus-numpad/lang/\fP。
+.SH 环境变量
+.TP
+.B ASUS_NUMPAD_LANG
+临时指定语言，优先级最高（高于 \fB\-\-lang\fP 与配置文件）。
+.TP
+.B ASUS_NUMPAD_LANG_DIR
+追加一个语言文件搜索目录（最先查找），便于本地化试译。
+.SH 已知限制
+背光命令字（0x60 / 0x01 / 0x00）来自官方 INF，但 INF 没有描述怎么把这三个字节送到 EC
+（那部分在官方驱动的 WMI/ACPI 调用里）。用户态走 hidraw / i2c 通用通道，
+首次在真机上使用若灯不亮，请先用 \-\-led none 确认逻辑，再按本机 ACPI 抓包修正
+\fIhidraw_prefix\fP 或 \fIi2c_payload\fP，不要去改状态机。
+.SH 参见
+.BR systemctl (1),
+.BR journalctl (1)

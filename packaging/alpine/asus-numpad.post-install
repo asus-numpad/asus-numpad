@@ -1,0 +1,32 @@
+#!/bin/sh
+# APKBUILD 的 post-install：与 deb/rpm 的 %post 等价。
+#
+# 用户级 systemd 单元在 Alpine 上通常没有（默认 OpenRC），所以这里只在
+# systemctl 存在时才动它；udev 部分对 OpenRC 同样有效（udev 规则与 init 系统无关）。
+
+set -eu
+
+if command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules >/dev/null 2>&1 || true
+    udevadm trigger --subsystem-match=input --action=change >/dev/null 2>&1 || true
+    udevadm trigger --subsystem-match=misc --action=change >/dev/null 2>&1 || true
+    # hidraw 节点在装包时已存在，reload 不会重放规则，必须显式 trigger
+    udevadm trigger --subsystem-match=hidraw --action=change >/dev/null 2>&1 || true
+    udevadm settle >/dev/null 2>&1 || true
+fi
+
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl --global enable asus-numpad.service >/dev/null 2>&1 || true
+fi
+
+cat <<'MSG'
+
+asus-numpad 已安装。
+  OpenRC 用户：把 `asus-numpad run` 放进桌面会话自启（如 ~/.xprofile 或
+  /etc/local.d/），或手工运行 `asus-numpad run`。
+  systemd 用户：`systemctl --user enable --now asus-numpad.service`
+  自检：asus-numpad check
+
+MSG
+
+exit 0
