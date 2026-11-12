@@ -1,0 +1,76 @@
+name: gui
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# 只读即可：GUI 产物传 artifact，不推分支
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: numdeck-gui-windows-x64
+            binary: numdeck-gui.exe
+          # 22.04 的 glibc 更旧，产出的二进制在新旧发行版上都能跑
+          - os: ubuntu-22.04
+            artifact: numdeck-gui-linux-x64
+            binary: numdeck-gui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # eframe 的 x11 / wayland 后端运行期 dlopen 系统库，构建期仍要 pkg-config
+      # 找 libxkbcommon 与 wayland-client，缺了链接会断在最后一跳
+      - name: 安装构建依赖
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              pkg-config libxkbcommon-dev libwayland-dev libgl1-mesa-dev
+
+      - name: 生成锁文件（若仓库里还没有）
+        run: |
+          if [ ! -f Cargo.lock ]; then cargo generate-lockfile; fi
+        shell: bash
+
+      - name: cargo build --release
+        run: cargo build --release -p numdeck-gui
+
+      - name: 自检（不写硬件）
+        run: ./target/release/${{ matrix.binary }} --selftest
+        shell: bash
+        continue-on-error: true
+
+      # 没有真机也得知道界面画没画出来：把所有页面离屏渲染一遍，抓渲染期 panic
+      # （退化网格、反向矩形、零面积预览这类只有真跑才炸的问题）。
+      # runner 上没 GPU，靠 llvmpipe 软件渲染；拿不到 GL 时脚本会自己 SKIP，
+      # 所以这里给 continue-on-error——环境拍不了图不算代码错。
+      - name: 逐页离屏渲染自检
+        if: runner.os == 'Linux'
+        shell: bash
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb libgl1-mesa-dri
+          cargo build -p numdeck-gui
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a bash tools/verify-gui-shots.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: target/release/${{ matrix.binary }}
+          if-no-files-found: error

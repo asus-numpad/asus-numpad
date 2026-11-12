@@ -1,0 +1,51 @@
+[workspace]
+members = [".", "gui"]
+resolver = "2"
+
+[package]
+name = "numdeck"
+version = "2.0.0"
+edition = "2021"
+rust-version = "1.75"
+description = "把笔记本触摸板上的数字小键盘接到 Linux：ASUS NumberPad 起家，兼顾采用同类触摸板数字区的机型，x86_64 / ARM64 双架构"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/numdeck-dev/numdeck"
+homepage = "https://numdeck-dev.github.io/"
+keywords = ["numpad", "touchpad", "numberpad", "linux", "hid"]
+categories = ["hardware-support"]
+readme = "README.md"
+
+[[bin]]
+name = "numdeck"
+path = "src/main.rs"
+
+[lib]
+name = "numdeck"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", default-features = false, features = [
+    "std",
+    "derive",
+    "cargo",
+    "help",
+    "usage",
+    "error-context",
+    "suggestions",
+] }
+
+# 只有 Linux 才需要真正的输入子系统；逻辑层（layout/engine/config）保持跨平台，
+# 这样 CI 与开发机（含 Windows）可以不接硬件跑全部单测。
+# 硬件访问只用 libc 直接走 evdev/uinput 内核 ABI，不引入 evdev crate——
+# 少一个第三方依赖，发行版打包时少一处版本漂移与打包器适配。
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

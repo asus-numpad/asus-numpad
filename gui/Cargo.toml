@@ -1,0 +1,49 @@
+[package]
+name = "numdeck-gui"
+version = "2.0.0"
+edition = "2021"
+rust-version = "1.77"
+description = "numdeck 图形界面：触摸板数字小键盘的背光、布局与校准控制（Windows / Linux 共用同一套界面与报文层）"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/numdeck-dev/numdeck"
+homepage = "https://numdeck-dev.github.io/"
+readme = "README.md"
+
+[[bin]]
+name = "numdeck-gui"
+path = "src/main.rs"
+
+[dependencies]
+# 复用驱动侧的跨平台逻辑：led_proto 的报文编码、led_policy 的设备排序判据、
+# brightness 的档位映射都与平台无关，GUI 不另写一套。
+numdeck = { path = "..", version = "2.0.0" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+eframe = { version = "0.37", default-features = false, features = [
+    "glow",
+    "default_fonts",
+    # x11/wayland 通过 dlopen 访问系统库，不增加链接期依赖；两个平台共用同一份
+    # Cargo.toml，交叉 check 时也不会因为缺 X11 开发包而失败。
+    "x11",
+    "wayland",
+] }
+ab_glyph = "0.2"
+
+# Windows：只用系统自带的 HID 用户态接口（setupapi + hid.dll），不装内核驱动、
+# 不接管输入——数字键仍由 ASUS 官方驱动处理，本程序只写 FEATURE 0x0d。
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Devices_HumanInterfaceDevice",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_Registry",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+# Linux：hidraw 写入走 numdeck 的 linux::led（同一份 HIDIOCSFEATURE 实现），
+# 设备号取自同一份 probe_candidates，因此这里不引入 libc、也不重复实现 ioctl。

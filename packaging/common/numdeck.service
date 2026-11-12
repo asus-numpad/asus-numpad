@@ -1,0 +1,46 @@
+[Unit]
+Description=ASUS NumberPad (touchpad numpad) userspace driver
+Documentation=man:numdeck(1)
+# 用户级实例：随登录会话起落，不需要 root。
+# 触摸板节点在 udev 处理完后才稳定，否则会抢在 HID 初始化之前 open 失败。
+After=default.target
+ConditionPathExists=/dev/input
+# 只在真机上跑：虚拟机 / 无触摸板的机器直接跳过，避免服务一直重启
+ConditionPathExistsGlob=/dev/input/event*
+# 触摸板被 USB 重枚举 / 暂时不存在时，进程会以非零码退出等 systemd 再拉起。
+# 默认限流是「10 秒内 5 次失败就放弃」，热插拔一波就能把服务钉死在 failed，
+# 之后触摸板回来了也不会自愈——所以这里明确关掉限流，无限重试。
+StartLimitIntervalSec=0
+# 但「这台机器就是不支持 / 没这块硬件」是永久性的，重试一万次也一样：
+# 退出码 2（机型不认识）、3（没有 NumberPad 硬件）由程序自己判出来，
+# 这里明确不重启，免得日志被 2 秒一条的启动失败刷满。
+RestartPreventExitStatus=2 3
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/numdeck run
+Restart=on-failure
+RestartSec=2s
+# 想让改过的配置生效：systemctl --user reload numdeck
+# 走的是「收尾后以 75 退出、由 systemd 重新拉起」，而不是原地热换配置——
+# 触摸板节点、LED 通道、键盘节点、几何全部重新探测，比热重载可靠。
+ExecReload=/bin/kill -HUP $MAINPID
+# 权限来源是 udev 的 TAG+="uaccess"（seat 内活动会话对触摸板 event 节点、
+# uinput、hidraw 背光通道天然可读写），因此这里不再需要 root。
+# 注意：用户级服务不能提实时优先级 / 改 OOM 权重（要 CAP_SYS_NICE），
+# 事件处理本身是 125Hz 的用户态循环，默认调度类足够。
+
+# ---- 加固（都不需要特权，用户级可用）----
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=default.target

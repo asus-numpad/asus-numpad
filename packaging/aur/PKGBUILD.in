@@ -1,0 +1,69 @@
+# shellcheck shell=bash
+# Maintainer: @MAINTAINER@
+#
+# 本文件是 AUR 用的 PKGBUILD 模板，不要直接 makepkg。
+# 由 packaging/aur/gen-aur.sh 渲染出版本号与校验和后再用，或直接从
+# GitHub Release 里下载渲染好的 PKGBUILD / .SRCINFO。
+#
+# 为什么包名带 -rs：AUR 上 numdeck 这个名字已被另一个 Python 实现的
+# 项目占用（0.4.1-7），本项目是 Rust 实现，故用 numdeck 区分；
+# 二进制名仍是 numdeck，靠 provides/conflicts 声明替代关系。
+#
+# shellcheck disable=SC2034  # pkgver/arch/depends 等由 makepkg 读取
+# shellcheck disable=SC2154  # srcdir / pkgdir 由 makepkg 注入
+pkgname=numdeck
+pkgver=@PKGVER@
+pkgrel=1
+pkgdesc="ASUS 触摸板数字小键盘（NumberPad）用户态驱动，Official AlgoParameters 对齐"
+arch=('x86_64' 'aarch64')
+url="https://github.com/numdeck-dev/numdeck"
+license=('GPL-3.0-or-later')
+depends=('glibc')
+makedepends=('cargo' 'rust')
+optdepends=('systemd: 开机自启与日志'
+            'usbutils: 排查 hidraw 背光通道')
+provides=('numdeck')
+conflicts=('numdeck' 'numdeck-git')
+backup=('etc/numdeck/numdeck.json')
+install="$pkgname.install"
+options=('!lto' 'strip')
+# 源码直接取 GitHub 的 tag tarball：AUR 只接受可复现的远端源码，
+# 不接受本地 tar 包。仓库名是 numdeck，与 pkgname 不同，下面的
+# $srcdir 路径按仓库名解压，别改成 $pkgname-$pkgver。
+source=("$pkgname-$pkgver.tar.gz::@SOURCE@")
+sha256sums=('@SHA256@')
+
+build() {
+    cd "$srcdir/numdeck-$pkgver" || exit 1
+    # 带了 Cargo.lock 就 --locked，保证依赖树与 CI 出包一致
+    if [[ -f Cargo.lock ]]; then
+        cargo build --release --locked
+    else
+        cargo build --release
+    fi
+}
+
+package() {
+    cd "$srcdir/numdeck-$pkgver" || exit 1
+
+    install -Dm0755 "target/release/numdeck" "$pkgdir/usr/bin/numdeck"
+    install -Dm0644 packaging/common/numdeck.service \
+        "$pkgdir/usr/lib/systemd/system/numdeck.service"
+    install -Dm0644 packaging/common/99-numdeck.rules \
+        "$pkgdir/usr/lib/udev/rules.d/99-numdeck.rules"
+    install -Dm0644 packaging/common/numdeck.1 \
+        "$pkgdir/usr/share/man/man1/numdeck.1"
+    install -Dm0644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm0644 LICENSE   "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+    install -d "$pkgdir/etc/numdeck"
+    cat > "$pkgdir/etc/numdeck/numdeck.json" <<'JSON'
+{
+  "numlock": "sync",
+  "calc_gesture": true,
+  "calc_gesture_mode": "long",
+  "mixed_mode": "auto",
+  "grab": true
+}
+JSON
+}

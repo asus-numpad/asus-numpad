@@ -1,0 +1,59 @@
+# ASUS 触摸板数字小键盘（NumberPad）
+#
+# 触摸板在 HID 层的名字形如 "ASUF1416:00 2808:0108 Touchpad"，
+# 不同代机型前缀不同（ASUF / ASUE / ASUP），因此按 vendor + MT 能力匹配，
+# 不要死写产品名，否则换机型就失效。
+
+# 触摸板事件节点：允许 seat 内用户直接读写（调试用 --device 时不必 sudo）
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", \
+    ATTRS{name}=="ASUF*", TAG+="uaccess", MODE="0660", GROUP="input"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", \
+    ATTRS{name}=="ASUE*", TAG+="uaccess", MODE="0660", GROUP="input"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", \
+    ATTRS{name}=="ASUP*", TAG+="uaccess", MODE="0660", GROUP="input"
+
+# uinput：驱动要建虚拟键盘（混合模式还要建虚拟触摸板）
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", MODE="0660", \
+    OPTIONS+="static_node=uinput"
+
+# 触摸板事件节点：名字不带 ASUF/ASUE/ASUP 前缀的机型按 vendor 兜底匹配。
+# ELAN 全族（04F3）与 PixArt（093A）都是实测会遇到的面板供应商，
+# 按 PID 死写会在换机型时失效。
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", \
+    ATTRS{idVendor}=="04f3", \
+    TAG+="uaccess", MODE="0660", GROUP="input"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", \
+    ATTRS{idVendor}=="093a", \
+    TAG+="uaccess", MODE="0660", GROUP="input"
+
+# 背光通道（hidraw）：真机实测背光 FEATURE 报告 0x0d 挂在触摸板自身节点上，
+# 不是 ASUS vendor。服务以普通用户身份运行，必须靠 uaccess 拿到写权限。
+#
+# 【踩坑】I2C-HID 触摸板（i2c_hid_acpi + hid-multitouch）的 hidraw 父链上
+# 既没有 idVendor、也没有 name 属性，`udevadm info -a /dev/hidrawN` 只能看到
+# QUIRKS / country。因此 ATTRS{idVendor}=="04f3" 这类写法在 I2C 面板上
+# **永远不命中**，背光节点会一直保持 root:root 0600，用户态服务写不进去
+# （1.0.0-18 背光完全不亮就是这个原因，日志里是「打开 /dev/hidraw4 失败:
+# Permission denied」）。
+# 正确做法：匹配父 HID 设备的 KERNELS 名 <busid>:<VID>:<PID>.<n>，
+# I2C-HID 的 busid 是 0018（BUS_I2C），USB 的 busid 是 0003（BUS_USB）。
+#
+# 两条授权路径是叠加的，任一生效即可：
+#   1) TAG+="uaccess"：由 systemd-logind 给「seat 内活动会话」的用户加 ACL。
+#      注意：SSH 远程、linger 起的无会话用户、tty 登录都拿不到 ACL。
+#   2) MODE="0660" GROUP="input"：用户属于 input 组即可读写，与 seat 无关。
+#      远程调试或 linger 常驻场景请走这条：sudo usermod -aG input $USER 后重新登录。
+ACTION=="add|change", SUBSYSTEM=="hidraw", KERNEL=="hidraw*", \
+    KERNELS=="0018:04F3:*", MODE="0660", GROUP="input", TAG+="uaccess"
+ACTION=="add|change", SUBSYSTEM=="hidraw", KERNEL=="hidraw*", \
+    KERNELS=="0018:093A:*", MODE="0660", GROUP="input", TAG+="uaccess"
+# USB 直连的老机型：父链上有 usb_device，ATTRS{idVendor} 才有值
+ACTION=="add|change", SUBSYSTEM=="hidraw", KERNEL=="hidraw*", \
+    ATTRS{idVendor}=="04f3", MODE="0660", GROUP="input", TAG+="uaccess"
+ACTION=="add|change", SUBSYSTEM=="hidraw", KERNEL=="hidraw*", \
+    ATTRS{idVendor}=="093a", MODE="0660", GROUP="input", TAG+="uaccess"
+
+# 老机型可能是 ASUS vendor 直连节点；注意 0B05:1ACE 是 OMNI RECEIVER 无线接收器，
+# 驱动侧已显式排除，这里只给老机型保留 vendor 权限。
+ACTION=="add|change", SUBSYSTEM=="hidraw", KERNEL=="hidraw*", \
+    ATTRS{idVendor}=="0b05", MODE="0660", GROUP="input", TAG+="uaccess"

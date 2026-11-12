@@ -1,0 +1,403 @@
+# numdeck English language file
+# Format: key = text (# starts a comment, \n is allowed inside a value)
+# Missing keys fall back to the built-in English text; copy this file to ~/.config/numdeck/lang/ to override (no root needed).
+
+# ---- 启动横幅 ----
+app.banner = touchpad numpad v{version} (Linux userspace, parameters taken from the official AlgoParameters)
+
+# ---- 命令行总览 ----
+cli.about = Touchpad numpad driver (Linux, parameters taken from the official AlgoParameters)
+cli.config.help = Path to the config file
+cli.device.help = Touchpad event device; auto-detected by default (ELAN 04F3 / PixArt 093A, layout picked from the HID module)
+cli.keyboard.help = Keyboard event device (reads the NumLock LED)
+cli.led.help = Backlight channel: hidraw / i2c / none
+cli.i2c_bus.help = i2c bus number
+cli.i2c_addr.help = i2c address (0x38 or 56)
+cli.hidraw.help = hidraw node (e.g. /dev/hidraw3)
+cli.i2c_transfer.help = i2c write tool name
+cli.key_mode.help = Key style: keypad / digits
+cli.layout.help = Layout code; `auto` (default) picks it from the touchpad HID module, `numdeck layout` lists every supported code
+cli.numlock.help = NumLock linkage: sync / toggle / off
+cli.mixed_mode.help = Mixed mode: auto / on / off
+cli.no_follow_brightness.help = Disable "numpad brightness follows keyboard backlight" and fall back to fixed 0x01
+cli.grab.help = Grab the touchpad (default)
+cli.no_grab.help = Do not grab the touchpad (numpad clicks leak to the desktop)
+cli.dump_config.help = Print the default config and exit
+cli.verbose.help = Print per-frame debug logs (run mode)
+cli.lang.help = UI language: zh-CN / zh-TW / en / auto (default auto = follow system)
+
+# ---- 子命令说明 ----
+cli.cmd.run = Take over the touchpad (default action)
+cli.cmd.check = Self-check: print official parameters, geometry conversion, key map, and run the offline tests
+cli.cmd.dump = Print raw touchpad events (troubleshooting, no key output)
+cli.cmd.bright = Brightness: four manual steps (0..max, linear or custom) / follow keyboard backlight
+cli.cmd.bright.long = e.g. `bright 0|1|2|3|4` (0 = off, 1 = darkest, 4 = brightest, linearly spaced by default), `bright up|down|cycle`, `bright follow on|off`, `bright status`; define your own steps with the `manual_brightness_levels` config key
+cli.cmd.bright.value = Step 0/1/2/3/4 (bounded by a custom step table), or up / down / cycle / next / follow / status
+cli.cmd.bright.mode = Value for `follow`: on / off
+cli.cmd.levels = Step table: show per-step bytes / set any step to any supported level / restore defaults
+cli.cmd.levels.long = e.g. `levels` (print the current table), `levels 2 0x46` (change step 2 only, 70 decimal works too), `levels reset` (back to the default [0,0x43,0x45,0x48]); each step accepts 0x00 (off) or any of 0x41..0x48, and the table must stay non-decreasing
+cli.cmd.levels.step = Step 1..N (N = current step count, max 8), or reset / default
+cli.cmd.levels.value = Level for that step: 0x00 or 0x41..0x48 (decimal or hex)
+cli.cmd.led = Send a raw backlight command byte (bypasses every state machine; for diagnosis)
+cli.cmd.led.long = e.g. led on | led off | led 0x41..0x48 (levels 1..8). Separates "never sent" from "hardware rejects".
+cli.cmd.led.value = on / off / any hex level (e.g. 0x41)
+led.cmd.usage = Usage: numdeck led on|off|0x41 (0x01 = on, 0x00 = off, 0x41..0x48 = levels 1..8)
+led.cmd.bad_value = Unrecognized value: {v} (use on / off / 0x41 / 65)
+cli.cmd.lang = Language: show / switch the UI language (简体中文, 繁體中文, English)
+cli.cmd.lang.long = e.g. `lang` (show current language and source), `lang zh-TW`, `lang en`, `lang auto` (follow system)
+cli.cmd.lang.code = Language code: zh-CN / zh-TW / en / auto
+
+# ---- 命令行参数取值无效时的提示 ----
+note.invalid_key_mode = --key-mode={v} is invalid, ignored
+note.invalid_numlock = --numlock={v} is invalid, ignored
+note.invalid_mixed_mode = --mixed-mode={v} is invalid, ignored
+note.invalid_i2c_addr = --i2c-addr={v} cannot be parsed, ignored
+note.invalid_language = language={v} is not recognised, falling back to auto
+note.manual_step_clamped = manual_brightness_step={step} is outside 0..={max}, clamped to {max}
+note.levels_dropped = {n} entr(y/ies) in brightness_levels are outside 0x{lo}..=0x{hi} and were dropped
+note.manual_levels_dropped = {n} entr(y/ies) in manual_brightness_levels are neither 0 (off) nor inside 0x{lo}..=0x{hi} and were dropped
+note.manual_levels_not_increasing = manual_brightness_levels must be non-decreasing from dim to bright; custom table dropped, falling back to the default [0,0x43,0x45,0x48]
+note.manual_levels_truncated = manual_brightness_levels has {n} steps, above the hardware limit of {max}; truncated
+note.manual_levels_reset = manual_brightness_levels is empty after dropping out-of-range values; falling back to linear spacing
+note.read_failed = Failed to read {path}, using defaults: {err}
+note.config_migrated = Migrated legacy config {from} to {to} (old file kept, safe to delete)
+
+# ---- 配置摘要与官方参数 ----
+cfg.summary = layout={layout} key_mode={mode} hold {frames} frames={ms}ms idle {idle}s mixed={mixed} numlock={numlock}
+param.frame_model = Frame model
+param.cont_sendkey = {frames} frames = {ms} ms
+param.numlock = {frames} frames = {ms} ms (generic)
+param.numlock_gh3 = {frames} frames = {ms} ms (this model)
+param.led_values = off 0x{off}; on: follows keyboard backlight 0x41..0x48, falls back to 0x{on} when unreadable (hidraw FEATURE 0x0d)
+param.i2c_unlock = 0x{unlock} (i2c channel only; brightness steps 0x41..0x48)
+param.i2c_unlock_name = i2c unlock word
+param.led_values_name = LED values
+param.key_count = Virtual keyboard key count
+
+# ---- 自检输出 ----
+check.notes_title = Config notes:
+check.summary = Config summary: {summary}
+check.official_title = Official AlgoParameters (raw INF values):
+check.device.probed = Device: touchpad detected, using real resolution
+check.device.fallback = Device: no touchpad detected ({err}), estimating from configured size {w}x{h} mm
+check.device.nonlinux = Device: not on Linux, estimating from configured size {w}x{h} mm
+check.geometry_title = Geometry conversion (official unit {unit} µm):
+check.geometry_usable = usable area x[{x0},{x1}] y[{y0},{y1}]
+check.keygrid_title = Key map ({cols} cols x {rows} rows, key_mode={mode}):
+check.keygrid_row = row {r}
+check.keygrid_col = col {c}
+check.keygrid_numlock = NumLock icon
+check.cells_title = Cell centres and hit keys:
+check.cell_line = ({r},{c}) centre=({cx},{cy}) → {key}
+check.behavior_title = Behaviour switches:
+check.b_numlock = NumLock linkage   {mode} (hold {frames} frames = {ms} ms)
+check.b_mixed = Mixed mode        {mode} (GESTURE_00 support bit = 1)
+check.b_calc = Calculator hold   {state} ({frames} frames = {ms} ms)
+check.b_grab = Grab touchpad     {state}
+check.b_grab_yes = yes
+check.b_grab_no = no (clicks leak through)
+check.b_idle = Idle blackout     {sec}s (keeps running, lights up on touch)
+check.b_led = Backlight channel {kind} ({where})
+check.b_bright = Backlight         {text}
+check.b_bright_cmd = Dim command       numdeck bright 1..4 (0=off, {steps} steps); numdeck bright follow on|off
+check.lang_line = UI language       {name} ({code})
+check.lang_source = Language source   {source}
+check.lang_file = Language file     {path}
+check.ext_title = Extension switches:
+check.ext_layouts = Custom layouts      {n} installed ({names})
+check.ext_layouts_none = Custom layouts      none (built-in tables only)
+check.ext_led = Backlight report    {proto}
+check.ext_led_proto = {hex} ({n} bytes)
+check.ext_pressure = Hard press switch   {text}
+check.ext_press_on = on, {percent}% / {frames} frames / {ms}ms cooldown
+check.ext_hotkeys = Hotkeys             {text}
+check.ext_none = none
+check.tests = Offline cases: see `cargo test` (runs on Windows / Linux, no hardware needed)
+check.conclusion = Conclusion: config and geometry agree.
+common.enabled = enabled
+common.disabled = disabled
+common.auto_detect = auto-detect
+
+# ---- 亮度状态 ----
+bright.follow_switch = Follow keyboard backlight: {state}
+bright.follow_on = on (numpad brightness tracks the keyboard backlight)
+bright.follow_off = off (uses the manual fixed step)
+bright.status_dir = Keyboard backlight dir: {dir} (polling {ms} ms)
+bright.status_step = Manual fixed step: {step}/{steps} (0=off, 1=darkest, {steps}=brightest)
+bright.status_map = Step mapping: 0→0x{off} (off); {table}
+levels.table = Current step table ({steps} steps, dim to bright): {table}
+levels.range = Every step accepts 0x00 (off) or 0x41..0x48; while following the keyboard backlight its own mapping is used, source dir {src}
+levels.wrote = Step {step} set to 0x{level}; written to {path} (backup {backup})
+levels.reset = Step table restored to the default [0, 0x43, 0x45, 0x48]; written to {path} (backup {backup})
+levels.err_step = Step must be an integer within 1..{steps}, got: {step}
+levels.err_value = Level must be 0x00 or 0x41..0x48 (65..72 decimal), got: {value}
+levels.err_order = Step {step} would be darker than the previous step; rejected. Adjust later steps first or run `levels reset`
+levels.usage = Usage: `levels` (show) / `levels <step> <value>` (e.g. `levels 2 0x46`) / `levels reset`
+bright.status_effective = Effective LED value: {text}
+bright.measured = Measured keyboard backlight: {kbd}/{max} → numpad 0x{cur}
+bright.measure_failed = Measured keyboard backlight: cannot read {dir} (not an ASUS model / asus-wmi not loaded)
+bright.report.follow = Follows keyboard backlight {kbd}/{max} → 0x{level} ({n} steps, {ms} ms polling, {dir})
+bright.report.follow_nodir = Follows keyboard backlight (unreadable, using the fixed fallback 0x{level})
+bright.report.static = Does not follow the keyboard backlight, fixed step {step} → 0x{level} (adjust with `bright 1..N`, re-enable with `bright follow on`)
+
+# ---- 亮度命令 ----
+bright.usage = Usage: numdeck bright 0|1..N    fixed step (0=off; 1=darkest; N=brightest, N=4 by default, linearly spaced)\n       numdeck bright up|down|cycle  step up/down or cycle through all steps\n       numdeck bright follow on|off  follow the keyboard backlight or not\n       numdeck bright status         show the current state and step table
+bright.follow_usage = Usage: numdeck bright follow on|off
+bright.err_unmappable = Step {step} cannot be mapped to a brightness byte (check the brightness_levels config)
+bright.sent = Sent brightness 0x{level} (channel {kind})
+bright.send_failed = Failed to send 0x{level}: channel not usable (check the --hidraw node and whether the udev uaccess rule matches it)
+bright.nonlinux = Not on Linux, no report is sent (showing conversion result only).
+bright.wrote_step = Wrote {path}: manual_brightness_step = {step}, follow_keyboard_brightness = false (backup {backup})
+bright.wrote_follow = Wrote {path}: follow_keyboard_brightness = {on} (backup {backup})
+bright.effect_off = Result: numpad is off (use bright 1..N to light it again).
+bright.effect_fixed = Result: numpad fixed at 0x{level} (no longer follows the keyboard backlight).
+bright.effect_follow_on = Result: numpad brightness follows the keyboard backlight again (synced on every change).
+bright.effect_follow_off = Result: numpad uses fixed step {step} (0x{level}); keyboard backlight changes no longer affect it.
+bright.switch = Switching step: {from} → {to}
+bright.switch_up = Switching step: {from} → {to} (stays unchanged at the highest step)
+bright.switch_down = Switching step: {from} → {to} (lowest step is 1, use bright 0 to turn off)
+
+# ---- 写配置与服务重启 ----
+persist.bad_json = {path} is not valid JSON, aborted (nothing was changed)
+persist.mkdir_failed = Cannot create directory {dir}
+persist.backup_failed = Failed to back up {path}, aborted
+persist.write_failed = Failed to write {path} (check owner/permissions of the file and its directory)
+svc.not_running = Note: the numdeck service is not running; the new settings take effect on next start.
+svc.restarted = Restarted the numdeck service; new settings are active now.
+svc.restart_failed = Failed to restart the service automatically; run: systemctl --user restart numdeck
+
+# ---- 语言命令 ----
+lang.current = Current language: {name} ({code}), source: {source}
+lang.source.env = NUMDECK_LANG environment variable
+lang.source.cli = command line --lang
+lang.source.config = config file language
+lang.source.locale = system locale
+lang.source.default = built-in default (English)
+lang.available = Available languages: {list}
+lang.dirs = Language file dirs: {dirs}
+lang.file = Language file: {path}
+lang.file_builtin = Language file     using text built into the binary (no external .lang found)
+lang.wrote = Wrote {path}: language = {value} (backup {backup})
+lang.usage = Usage: numdeck lang [zh-CN|zh-TW|en|auto]   show or switch UI language\nTemporary override: numdeck --lang en check
+lang.bad_code = Unrecognised language: {v} (available: zh-CN / zh-TW / en / auto)
+lang.restart_hint = Takes effect the next time numdeck runs (this output keeps the current language).
+lang.effect_auto = Language will follow the system locale from now on (currently resolved to {name}).
+
+# ---- dump 与 run 模式 ----
+dump.mode = dump mode: prints raw touchpad events, no keys are emitted. Press Ctrl+C to quit.
+dump.nonlinux = evdev is unavailable on this platform; cannot dump. Run it on the target Linux machine.
+dump.header = Reading {path} ({name}), Ctrl-C to stop
+run.brightness = Backlight: {text}
+run.already_running = another numdeck instance is already running; exiting.
+run.reloading = reload requested; exiting so the service restarts with the new config.
+run.nonlinux = evdev / uinput are unavailable; run only works on Linux.
+run.nonlinux_hint = Use `numdeck check` to inspect parameters and geometry conversion.
+run.device =   device: {path} ({name})
+run.device_lost = Touchpad is gone ({err}); stopping to release it.
+
+# ---- 设备探测与底层日志 ----
+dev.open_failed = Failed to open {path}
+dev.no_touchpad = No touchpad device found. Scanned: {seen}\nSpecify one with --device /dev/input/eventX
+dev.no_permission = (no access to /dev/input)
+dev.no_abs_x = no ABS_MT_POSITION_X
+dev.no_abs_y = no ABS_MT_POSITION_Y
+dev.warn.grab = [warn] EVIOCGRAB failed: {err}
+dev.warn.uinput = [warn] Cannot create the virtual touchpad ({err}); mixed mode degrades to pure numpad
+dev.warn.uinput_rebuild = [warn] virtual device session broke, rebuilt automatically
+dev.report.device = device: {path} ({name})
+dev.report.touch_axes = touch axes: MT_X={x} MT_Y={y} TRACKING_ID={tid}
+dev.report.keyboard_led = keyboard LED channel: {state}
+dev.report.keyboard_ok = available
+dev.report.keyboard_ng = unavailable (NumLock linkage degrades)
+dev.report.backlight = backlight: {kind}
+led.warn.open = [warn] Failed to open {path}: {err}
+led.info.reattach = [info] Backlight node moved, reattached {old} -> {new}
+led.warn.feature = [warn] Writing FEATURE report 0x{rid} to {path} (level 0x{level}) failed: {err}
+led.warn.tool = [warn] {tool} failed to write 0x{value}: {err}
+led.warn.exec = [warn] Cannot execute {tool}: {err}
+led.warn.no_feature = [warn] {dev} is {vid}:{pid} but has no FEATURE report 0x{rid}; trying it anyway
+led.warn.fallback_asus = [warn] No backlight node for {vid}:{pid}, falling back to the ASUS node; it may not light up
+led.warn.bad_kind = [warn] --led {v} is invalid, using auto
+led.warn.no_access = [warn] cannot read FEATURE report 0x{rid} of {dev} (permission denied); run `numdeck check` for the udev hint, do not treat it as missing hardware
+led.none.explicit = explicitly disabled
+led.none.no_hidraw = no ASUS hidraw node found
+led.none.no_i2c = no i2c slave 0x38 found
+led.none.any = neither hidraw nor i2c is available, backlight unusable
+bright.warn.no_kbd_dir = [warn] Cannot read {dir}; numpad brightness falls back to 0x{level} (use --no-follow-brightness to disable following explicitly)
+
+# ---- 引擎状态日志 ----
+[warn] Failed to grab the touchpad; numpad clicks will leak to the desktop. If another instance is already running (the user service grabs the device on boot), stop it first with `systemctl --user stop numdeck`; two processes always contend for the device (EBUSY).
+engine.state.lit = [state] backlight on ({reason})
+engine.state.dark = [state] backlight off ({reason})
+engine.state.enter = [state] numpad on
+engine.state.exit = [state] numpad off
+engine.state.calc = [state] launching calculator
+engine.state.resync = [state] re-aligning backlight after resume
+engine.state.syn_dropped = [state] events dropped, contacts and keys reset
+engine.reason.enable = top-up while enabled
+engine.reason.enter = numpad turned on
+engine.reason.exit = numpad turned off
+engine.reason.idle = idle {sec}s
+engine.reason.touch = touch wake
+engine.reason.numlock_on = NumLock on
+engine.reason.numlock_off = NumLock off
+engine.bright.line = [brightness] keyboard backlight {kbd} → numpad 0x{level}
+engine.geo.range = touchpad coordinate range x[{x0},{x1}] y[{y0},{y1}]
+engine.geo.unit = 1 unit = {ux} µm (X) / {uy} µm (Y)
+engine.geo.official = Official GH3XLNDZ conversion: {text}
+engine.warn.grab = [warn] cannot grab the touchpad; digits are still emitted, but the pointer moves as well
+cfg.err.mixed_mode = invalid mixed_mode: {v}
+cfg.err.brightness_levels = brightness_levels[{idx}] is not a value in 0..255: {item} (use 65 or "0x41")
+common.list_sep = ,\s
+
+# ---- Layouts (v8: cross-model support) ----
+cli.allow_unverified.help = Allow keys from layouts not yet verified on real hardware (blocked by default to avoid wrong keys)
+cli.cmd.layout = Layout: list official layouts / auto-detect by HID hardware ID / pin a layout
+cli.cmd.layout.long = Without arguments it lists every official layout with its support level; `layout auto` restores auto-detection; `layout GH3XLNDZ` pins a layout; `layout --ids` also prints the HID hardware ID table
+cli.cmd.layout.name = Layout name (GH3XLNDZ / GH2XLNDZ / GH4XLNDZ / auto)
+cli.cmd.layout.ids = Also list the touchpad HID hardware ID -> layout table
+cli.sku.help = Force a model config, skipping auto-detection (run `numdeck sku` for the ids)
+cli.cmd.sku = Model config: show what was detected, list the ids, or pick one by hand
+cli.cmd.sku.long = Without arguments it shows the detected model config, how it was chosen, plus the DMI identity and touchpad module; `sku list` lists every id; `sku g614` pins one by hand; `sku auto` goes back to auto-detection
+cli.cmd.sku.id = Model id, or auto / list
+cli.sku.help.arm = This build carries no model table; only `custom` is accepted (= not set)
+cli.cmd.sku.long.arm = Without arguments it shows the current model and touchpad module. The ARM64 build carries no ASUS model table, so the model is always the custom layout and `sku list` only lists `custom`; key positions and numpad geometry come from custom_layouts in the config
+layout.current = Layout: configured {layout}, effective {resolved} ({support})
+layout.list_title = Layouts recorded in the official AsusNUMPADFilter.inf (* verified / ~ family, parameters from the INF, not checked on hardware / - no key-position reference):
+layout.legend = * verified   ~ same family, unverified (needs --allow-unverified)   - unsupported
+layout.custom_title = Custom layouts installed from the config (custom_layouts):
+layout.custom_line = + {name} cols={cols} hids={hids}
+layout.ids_title = Touchpad HID hardware ID -> layout (models sharing an ID are interchangeable):
+layout.usage = Usage: numdeck layout                 show current layout and the table
+      numdeck layout --ids           also print the HID hardware ID table
+      numdeck layout auto            auto-detect from the touchpad HID ID (recommended)
+      numdeck layout GH3XLNDZ        pin a layout
+layout.wrote = Wrote {path}: layout_name = {value} (backup {backup})
+layout.effect_auto = Next start picks the layout from the touchpad HID hardware ID, falling back to GH3XLNDZ
+layout.unverified_warn = Note: layout {layout} is {support}; its key table has not been verified on real hardware
+layout.bad_name = Unknown layout name: {v}
+note.layout_unknown = layout_name={v} is not in the official layout table, using auto
+err.layout_unverified = Layout {layout} ({support}) is not verified on real hardware; startup stopped to avoid wrong keys. Add --allow-unverified once confirmed.
+err.layout_unverified.hint = To allow it: numdeck --allow-unverified run, or set "allow_unverified_layout": true in /etc/numdeck/numdeck.json
+err.layout_unsupported.hint = This key table has never been checked on real hardware and there is no key-position reference for it, so applying it could produce wrong keys; please report the `numdeck check` output so it can be checked
+err.layout_custom.hint = This build ships no built-in model table; configure a custom layout first: add an entry to custom_layouts in /etc/numdeck/numdeck.json (hid_ids binds the touchpad, keys records the key positions) or use the Extend page in the GUI. See https://numdeck-dev.github.io/
+dev.report.layout = Layout: {layout} ({support}, source {source}, HID {hid})
+
+# 跨机型背光自检 / cross-model backlight self-check
+common.yes = yes
+common.no = no
+check.led_probe_title = Backlight candidate nodes (best first):
+check.led_probe_line = {dev}  {vid}:{pid}  FEATURE0x0d={feature}  rank={rank}  {state}
+check.led_probe_noperm_hint = Some nodes were denied: clear the permission issue above before concluding the hardware is missing.
+check.led_probe_unknown = read-failed
+check.led_probe_noperm = denied
+check.led_probe_selected = [driver picks this]
+check.led_probe_idle = [alternative]
+check.led_probe_skip = [skip: wireless receiver]
+check.led_probe_i2c = Backlight i2c: bus={bus} addr=0x{addr}
+check.led_probe_i2c_none = Backlight i2c: no device at 0x38/0x15
+
+# ---- 机型（SKU）分包 ----
+sku.model = Model config: {sku} — {source}
+sku.source.manual = set by hand
+sku.source.dmi = detected from the DMI model string
+sku.source.hardware = detected from the touchpad module
+sku.source.custom = running the custom layout
+sku.detail = Matched: {detail}
+sku.note = Model note: {note}
+sku.compat = Compatibility details: https://numdeck-dev.github.io/
+sku.dmi = Local DMI identity: {dmi}
+sku.dmi_unknown = Local DMI identity: unavailable (not Linux or /sys/class/dmi/id unreadable)
+sku.hw = Local touchpad module: {hw}
+sku.list = Known models: {ids}
+sku.set = Model set to {sku} ({path}); restart the service to apply
+sku.clear = Manual choice cleared, back to automatic detection ({path})
+sku.bad_id = Unknown model "{id}"; available: {ids}
+note.sku_unknown = Model id "{id}" is not in the model table (ignored, automatic detection stays on). Known ids: {ids}
+err.not_asus = This machine's vendor is {vendor}, which is not in the model list. If its touchpad is a NumberPad-type module, pin a model with --sku.
+err.unsupported_model = This machine is not in the supported model list ({ids}).
+err.unsupported_stop = numdeck was not started.
+err.unsupported_hint = If the hardware info is wrong or unreadable (virtual machine, placeholder DMI), force the model by hand: numdeck sku <id>
+err.no_numpad = This touchpad has no NumberPad hardware: its HID report descriptor carries no FEATURE report 0x0d, so neither the numpad backlight nor the icon area exists. Refusing to start.
+err.no_numpad.hint = Only configurations with a NumberPad expose FEATURE 0x0d. The 4-zone RGB configurations of the same model share the touchpad module but have no icon area, and no software can create one. If the hardware really does have a NumberPad, report the output of `numdeck check`.
+err.numpad_no_access = Cannot read the touchpad report descriptor (permission denied), so NumberPad presence is unknown. Continuing; if the numpad does not respond, check the udev uaccess rule first.
+layout.source.auto = auto-detected from the touchpad module
+layout.source.fixed = pinned in the config / on the command line
+layout.source.sku = inferred from the detected model, module id unreadable
+layout.source.unknown_hid = module id not in the layout table
+layout.source.fallback = default layout, module id unreadable
+layout.source.custom_none = no custom layout configured (this build has no built-in model table)
+sku.nonlinux = Model check: skipped, DMI and hidraw are Linux-only (run this on the target machine)
+
+# Model display names and recognition notes (untranslated languages fall back to the built-in Chinese text)
+sku.g533.display = ASUS ROG Strix SCAR 6 / Strix G6, 15", 2022 (G533Z* / G513R*)
+sku.g533.note = Module ASUE1403 / ELAN1403 → layout GH2XLNDZ (same family). Only the 2022 generation (Strix SCAR 6 G533Z*, Strix G6 15" G513R*) has a NumberPad; the 2021 generation (G533Q* / G513Q* / G513I*) has no such hardware in its official specs, so `excludes` keeps it out of recognition instead of folding it into this profile. Not every 2022 configuration has it either: 3 of the 5 official Strix G6 configurations are the 4-zone RGB variant without this hardware
+sku.g614.display = ASUS ROG Strix SCAR 7 / SCAR 8 and Extreme editions, 16", 2023–2024 (G614 / G634)
+sku.g614.note = G614 and G634 share one touchpad (ASUE1416 / ASUF1416 → GH3XLNDZ); a matching model prefix does not guarantee the hardware: 2 of the 10 official 2023 configurations are the 4-zone RGB variant (suffix EACX) without a NumberPad, which covers the whole China-market 魔霸新锐 line. When FEATURE 0x0d is not found at startup the driver treats the machine as incompatible and refuses to run
+sku.g615.display = ASUS ROG Strix SCAR 9 / SCAR 10 and Extreme editions, 16", 2025–2026 (G615 / G635)
+sku.g615.note = PixArt ASCP1400 / ASCF1400 → GH4XLNDZ (same family). G615 is the standard model and G635 the Extreme edition; the 2026 SCAR 10 reuses the same pair of module ids, whose values come from the 2025 generation. 1 of the 25 official 2025 configurations (90NR0LJ1-M005P0) is the 4-zone RGB variant without a NumberPad, as is the China-market 魔霸新锐 2025 (G614PM / G614PR 8940HX and the Intel versions). The ProArt P16 (H7606) of that generation uses a DialPad knob rather than a NumberPad and is not folded into this profile
+sku.gx550.display = ASUS ROG Zephyrus Duo, 15" / 16", side-mounted touchpad (GX550 / GX551 / GX650)
+sku.gx550.note = GX550 / GX551 / GX650 all belong to the gx551 key family; module ASUE1408 → GVM_A, ASUE1404 → GVM. GVM_A and GVM share one parameter set (the official NUMPADLAYOUT_GVM_* list stops at _06 and the remaining fields default to 0); layout status: same family, not verified on real hardware. The touchpad sits vertically to the right of the keyboard and numeric mode is toggled by a dedicated keyboard key, not by a long press on the icon area (see README, dual-screen models)
+sku.ux582.display = ASUS Zenbook Pro Duo, side-mounted touchpad (UX582 / UX482)
+sku.ux582.note = Module ASUE1406 / ELAN1406 → layout NVM (the official NUMPADLAYOUT_NVM_* list stops at _12 and the remaining fields default to 0); layout status: same family, not verified on real hardware. The touchpad sits to the right of the keyboard and numeric mode is toggled by a dedicated keyboard key, not by a long press on the icon area
+sku.custom.display = Custom layout (no model table, no model detection)
+sku.custom.note = This build ships no ASUS model table: the model is not derived from DMI strings or touchpad modules; the custom layout path is used directly. Add an entry to custom_layouts (hid_ids binds the touchpad, keys records the key positions) or use the Extend page in the GUI; startup stops while no custom layout is configured
+
+# ---- custom extensions: report / layout / pressure / hotkey ----
+note.custom_layout_no_name = a custom layout has no name and was ignored
+note.custom_layout_builtin_clash = custom layout "{name}" clashes with a built-in layout, ignored
+note.custom_layout_base_missing = custom layout "{name}": base "{base}" not found, ignored
+note.custom_layout_bad_keys = custom layout "{name}" has an invalid key table, ignored: {err}
+note.custom_layout_bad_columns = custom layout "{name}": {n} columns is outside 1..=8, ignored
+note.custom_hid_override = HID {hid}: custom layout "{name}" overrides built-in "{builtin}"
+note.led_proto_invalid = custom LED report is invalid ({err})
+note.pressure_switch_on = pressure switching on: {percent}% held for {frames} frames toggles
+note.pressure_clamped = hard press threshold out of range, corrected to {percent}% / {frames} frames
+note.hotkey_bad = hotkey "{spec}" is invalid and was ignored: {err}
+engine.pressure.toggle = pressure triggered a toggle ({value}/{max})
+engine.hotkey.fired = hotkey fired: {action} ({key})
+
+# ---- custom partition / manual calibration (non-native models) ----
+cli.cmd.calibrate = Calibration: derive the panel range and grid rectangle from real touches
+cli.cmd.calibrate.long = Guides you through pressing the four corners and the centre of two opposite cells, then solves the grid geometry from those samples. Writes nothing unless --write is given; --samples replays a saved sample file instead of touching the device (works off-box). Prints the cell-centre table so you can confirm every cell on real hardware
+cli.cmd.calibrate.samples = Read a saved sample file instead of collecting interactively (JSON: corners / first_point / last_point)
+cli.cmd.calibrate.write = Write the solved partition into the config (a .bak is kept)
+cli.cmd.calibrate.cols = Key table columns to calibrate for (defaults to the active layout)
+cli.cmd.calibrate.rows = Key table rows to calibrate for
+calibrate.intro = Press and hold each of the four corners in turn, then lift. Corners: top-left, top-right, bottom-left, bottom-right.
+calibrate.intro_cells = Now press the centre of two opposite cells: the top-left cell and the bottom-right cell.
+calibrate.prompt.tl = Hold the top-left corner...
+calibrate.prompt.tr = Hold the top-right corner...
+calibrate.prompt.bl = Hold the bottom-left corner...
+calibrate.prompt.br = Hold the bottom-right corner...
+calibrate.prompt.cell_first = Hold the centre of the top-left cell...
+calibrate.prompt.cell_last = Hold the centre of the bottom-right cell...
+calibrate.timeout = No stable touch arrived in time, aborted
+calibrate.need_linux = Interactive sampling needs a Linux touchpad device; use --samples FILE to replay a saved sample instead
+calibrate.from_samples = Samples from {path}
+calibrate.bad_keys = {cols} columns x {rows} rows is outside 1..=8, nothing to calibrate
+calibrate.fail = Calibration failed: {err}
+calibrate.ok_title = Result
+calibrate.panel = touched area: x {x0}..{x1}  y {y0}..{y1}
+calibrate.grid = grid: {cols} cols x {rows} rows  [{x0}, {y0}] .. [{x1}, {y1}]
+calibrate.cell_size = cell: {w} x {h} units
+calibrate.grid_title = Cell centres (tap each one to confirm it registers):
+calibrate.written = Written to {path}
+calibrate.snippet_title = Config snippet:
+calibrate.snippet_hint = Add it under the "partition" key, or re-run with --write to store it directly.
+calibrate.samples.read_failed = Cannot read {path}
+calibrate.samples.bad_json = {path} is not valid JSON
+calibrate.samples.missing = Sample file is missing "{k}"
+calibrate.samples.bad_pair = "{k}" must be a [x, y] pair of integers
+note.calibration_inverted = calibration {axis}: lower bound is not below the upper bound, axis ignored
+note.calibration_bad_units = calibration {axis}: units_per_mm must be positive, ignored
+note.partition_invalid = custom partition rejected, falling back to the official grid: {err}
+note.partition_extra_cols = partition has {have} columns but the key table has {want}; extra columns produce no keys
+note.partition_extra_rows = partition has {have} rows but the key table has {want}; extra rows produce no keys
+note.partition_on = custom partition active (layout: {layout})
+note.partition_cols_range = custom partition column count {v} is outside 1..=8, that value is ignored
+note.partition_rows_range = custom partition row count {v} is outside 1..=8, that value is ignored
+note.partition_rect_bad = custom partition {what} [{vals}] is inverted or has no area, that value is ignored
+note.partition_ratio_mismatch = {what} has {have} entries but the grid needs {want}, that ratio list is ignored
+note.partition_ratio_bad = {what} contains a non-positive or non-finite value, that ratio list is ignored
+note.partition_numlock_outside = NumLock cell [{r}, {c}] is outside the {rows}x{cols} grid, the default cell is used

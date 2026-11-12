@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>asus-numpad 1.0.3 软件源</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.65 -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
+         max-width: 46rem; margin: 3rem auto; padding: 0 1.2rem; }
+  h1 { font-size: 1.5rem; margin-bottom: .2rem; }
+  .sub { opacity: .65; margin-top: 0; }
+  h2 { font-size: 1.05rem; margin-top: 2.2rem; border-bottom: 1px solid #8884; padding-bottom: .3rem; }
+  pre { background: #8881; padding: .8rem 1rem; border-radius: 6px; overflow-x: auto; font-size: 13px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: .35rem .6rem; border-bottom: 1px solid #8883; }
+  .fp { font-size: 12px; word-break: break-all; opacity: .7; }
+</style>
+</head>
+<body>
+<h1>asus-numpad 1.0.3</h1>
+<p class="sub">ASUS 触摸板数字小键盘（NumberPad）的 Linux 用户态驱动 · GPL-3.0-or-later</p>
+
+<p>本页是软件源根地址：<code>https://raw.githubusercontent.com/asus-numpad/asus-numpad/main/repo</code>。所有源用同一把 GPG 密钥签名，指纹 <code>79F282157F2D3FF8E3C6806314C2BF611986E168</code>；公钥在 <code>keys/</code> 下，下面每条命令都已含导入公钥这一步。</p>
+<p class="fp">签名指纹：79F282157F2D3FF8E3C6806314C2BF611986E168</p>
+
+<h2>一条命令（导入公钥 + 写源 + 安装）</h2>
+<p>脚本自己认发行版，按上面的方式写源再装，重复运行不会重复追加；只想写源不装就加 <code>--repo-only</code>。</p>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/asus-numpad/asus-numpad/main/repo/install.sh | sudo sh</code></pre>
+
+<h2>Debian / Ubuntu / Mint</h2>
+<pre><code>sudo install -d -m 0755 /usr/share/keyrings
+curl -fsSL https://raw.githubusercontent.com/asus-numpad/asus-numpad/main/repo/keys/asus-numpad-repo.gpg \
+  | sudo tee /usr/share/keyrings/asus-numpad.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/asus-numpad.gpg] https://raw.githubusercontent.com/asus-numpad/asus-numpad/main/repo/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/asus-numpad.list
+sudo apt update &amp;&amp; sudo apt install asus-numpad</code></pre>
+
+<h2>Fedora / RHEL / Rocky / openSUSE</h2>
+<pre><code>sudo rpm --import https://raw.githubusercontent.com/asus-numpad/asus-numpad/main/repo/keys/asus-numpad-repo.asc
+sudo tee /etc/yum.repos.d/asus-numpad.repo <<'EOF'
+[asus-numpad]
+name=asus-numpad
+baseurl=https://raw.githubusercontent.com/asus-numpad/asus-numpad/main/repo/rpm/$basearch
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://raw.githubusercontent.com/asus-numpad/asus-numpad/main/repo/keys/asus-numpad-repo.asc
+EOF
+sudo dnf install asus-numpad</code></pre>
+
+<h2>Arch / Manjaro</h2>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/asus-numpad/asus-numpad/main/repo/keys/asus-numpad-repo.asc -o /tmp/asus-numpad.asc
+sudo pacman-key --add /tmp/asus-numpad.asc
+sudo pacman-key --lsign-key 79F282157F2D3FF8E3C6806314C2BF611986E168
+sudo tee -a /etc/pacman.conf <<'EOF'
+
+[asus-numpad]
+SigLevel = Required DatabaseRequired
+Server = https://raw.githubusercontent.com/asus-numpad/asus-numpad/main/repo/arch/$arch
+EOF
+sudo pacman -Sy asus-numpad</code></pre>
+
+<h2>Alpine</h2>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/asus-numpad/asus-numpad/main/repo/keys/asus-numpad-apk.rsa.pub \
+  | sudo tee /etc/apk/keys/asus-numpad-apk.rsa.pub >/dev/null
+echo "https://raw.githubusercontent.com/asus-numpad/asus-numpad/main/repo/alpine" | sudo tee -a /etc/apk/repositories
+sudo apk update &amp;&amp; sudo apk add asus-numpad</code></pre>
+
+<h2>Nix / NixOS</h2>
+<pre><code>nix run github:asus-numpad/asus-numpad
+# NixOS: services.asus-numpad.enable = true;</code></pre>
+
+<h2>其它发行版</h2>
+<p>用 Release 里的通用 tarball（musl 静态链接，任意 x86_64 Linux 可跑）：</p>
+<pre><code>tar xzf asus-numpad-1.0.3-x86_64.tar.gz
+cd asus-numpad-1.0.3 &amp;&amp; sudo ./install.sh</code></pre>
+
+<h2>内容</h2>
+<table>
+<tr><th>路径</th><th>说明</th></tr>
+<tr><td><code>apt/</code></td><td>APT 仓库（dists/stable + pool）</td></tr>
+<tr><td><code>rpm/&lt;arch&gt;/</code></td><td>RPM 仓库（含 repodata）</td></tr>
+<tr><td><code>arch/&lt;arch&gt;/</code></td><td>Pacman 仓库（asus-numpad.db）</td></tr>
+<tr><td><code>alpine/&lt;arch&gt;/</code></td><td>Alpine 仓库（APKINDEX）</td></tr>
+<tr><td><code>keys/</code></td><td>公钥：apt 用 .gpg、dnf 与 pacman 用 .asc、apk 用 .rsa.pub</td></tr>
+</table>
+<p class="sub">每个生态只保留最近 3 个版本；更早的版本仍可从 GitHub Releases 取。</p>
+</body>
+</html>

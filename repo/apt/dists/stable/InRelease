@@ -1,0 +1,34 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+Origin: asus-numpad
+Label: asus-numpad
+Suite: stable
+Codename: stable
+Version: 1.0.3
+Architectures: amd64
+Components: main
+Description: ASUS NumberPad userspace driver for Linux
+Date: Thu, 12 Nov 2026 03:39:02 UTC
+SHA256:
+ 37fc6a4d6314c403132a533c2bad6ddfe9cfcb6db57fa45dcfc22c7217453d95 2728 main/binary-amd64/Packages
+ 4ac7e4b78ee0154ea1ddbe019ef991cbca414a95bd7e84939e3569502c8f2156 865 main/binary-amd64/Packages.gz
+MD5Sum:
+ 9092b507a4ca40db6e765b8168a762b4 2728 main/binary-amd64/Packages
+ 5f38fc240bf7d8fb1303cb6df10a8297 865 main/binary-amd64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iQIzBAEBCgAdFiEEefKCFX8tP/jjxoBjFMK/YRmG4WgFAmr1NNYACgkQFMK/YRmG
+4WhIfw//Y7uSMJF623xKdOFj4tIE4+se4PQBLicfZQb48Gso+7GPWVz77Qy3faBa
+1eCh7dRWj06r61OIe0JJ61CEyX9Cgwyfowng0+zj8DH8dgy2ZEk2WTzDZHJbPn0T
+BABKwzFtwxzpeDjGhCL5kCwhzRJoql2rdw8ZPre86Ng9CgpLCK5FK26nMaOWbNWG
+xA4NGC1zGAZRLbF2q42SCxYaRoudC0agTjFNoRF3L+UMs02BiEgInqgX5seYK/Kp
+CBDmINpcTLy+9YRG3SJC5nfqzfq2CcMtfs0ZDVOXZe94221fOVN0fWrwczeiRSq/
+FZfO2g5DIsh/KcQFCS9h60wKZkcSa+J0w1vicXyc5c2KYZf7eK/VBoAWvVUUZ7Xa
+Ycc+tkh/QVF5X2/hBQyDV4WTcN6OSLQz47iI1xV4pB5kVb7UyYzrGwRSSVKcr2En
+tRw10ahdFDZdTYhB3CBL3us/ZK7DLdh33MPCWMraqEvicXuXcns8VQW4+uWzDOkD
+DcQjeWNXyCchMkIyTmyyWDHhsgs4cl9h9pSIi/opqTFeFEn+9bE0ohc5b1dw2O8v
+WOOvRHxYTi4oBBf4+UqWjQ6072aFhLw5UB7rTLsEumRKlWe/8ei68qLWIrKvrMG5
+xzwHxU1wElszV9HxmEw9FROaEmvDCEbACOOK8Ov2+KZft5bU8mU=
+=5/TU
+-----END PGP SIGNATURE-----

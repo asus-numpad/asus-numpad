@@ -1,0 +1,74 @@
+# shellcheck shell=sh
+# shellcheck disable=SC2034,SC2154  # 变量由 abuild 注入/消费
+# Maintainer: numdeck maintainers <maintainers@example.invalid>
+#
+# 构建：在 Alpine 上装好 abuild 后执行
+#   abuild-keygen -a -i
+#   ./packaging/alpine/make-alpine.sh
+# 或直接把本文件放到 ~/aports/community/numdeck/ 下走官方 aports 流程。
+#
+# 说明：abuild 默认在净网环境里编译，cargo 拿不到 crates.io。这里显式打开
+# `options=net`，让 build() 阶段的 cargo 能取依赖；想要彻底离线就改成
+# `cargo vendor` 打一份依赖 tarball 放进 source（依赖只有 serde / clap / libc）。
+
+pkgname=numdeck
+pkgver=1.0.1
+pkgrel=0
+pkgdesc="ASUS NumberPad userspace driver for Linux (official AlgoParameters aligned)"
+url="https://github.com/numdeck-dev/numdeck"
+arch="x86_64 aarch64"
+license="GPL-3.0-or-later"
+depends=""
+makedepends="cargo rust"
+install="$pkgname.post-install"
+subpackages="$pkgname-doc"
+source="$pkgname-$pkgver.tar.gz::https://github.com/numdeck-dev/numdeck/archive/v$pkgver.tar.gz"
+builddir="$srcdir/$pkgname-$pkgver"
+options="net"
+# 语言文件与 man 由 install 阶段装到固定路径，不参与 abuild 的自动拆分
+
+build() {
+	cd "$builddir" || return 1
+	if [ -f Cargo.lock ]; then
+		cargo build --release --locked
+	else
+		cargo build --release
+	fi
+}
+
+package() {
+	cd "$builddir" || return 1
+
+	install -Dm0755 target/release/numdeck \
+		"$pkgdir/usr/bin/numdeck"
+	install -Dm0644 packaging/common/numdeck.service \
+		"$pkgdir/usr/lib/systemd/system/numdeck.service"
+	install -Dm0644 packaging/common/99-numdeck.rules \
+		"$pkgdir/usr/lib/udev/rules.d/99-numdeck.rules"
+	install -Dm0644 packaging/common/numdeck.1 \
+		"$pkgdir/usr/share/man/man1/numdeck.1"
+
+	install -d "$pkgdir/usr/share/numdeck/lang"
+	install -m0644 lang/zh_CN.lang lang/zh_TW.lang lang/en.lang \
+		"$pkgdir/usr/share/numdeck/lang/"
+
+	install -Dm0644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+	install -Dm0644 LICENSE   "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+	install -d "$pkgdir/etc/numdeck"
+	cat > "$pkgdir/etc/numdeck/numdeck.json" <<-'JSON'
+		{
+		  "numlock": "sync",
+		  "calc_gesture": true,
+		  "calc_gesture_mode": "long",
+		  "mixed_mode": "auto",
+		  "grab": true,
+		  "follow_keyboard_brightness": true,
+		  "manual_brightness_step": 4,
+		  "language": "auto"
+		}
+	JSON
+}
+
+# 出包时由 make-alpine.sh 按真实 tarball 填充；直接 abuild 前先跑一次脚本
+sha512sums=""

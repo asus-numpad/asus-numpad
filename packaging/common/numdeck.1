@@ -1,0 +1,374 @@
+.TH ASUS-NUMPAD 1 "2026-11-10" "numdeck 1.0.3" "用户命令"
+.SH 名称
+numdeck \- ASUS 触摸板数字小键盘（NumberPad）用户态驱动
+.SH 概要
+.B numdeck
+.RI [ 选项 ] " " run
+.br
+.B numdeck
+.RI [ 选项 ] " " check
+.br
+.B numdeck
+.RI [ 选项 ] " " dump
+.br
+.B numdeck
+.RI [ 选项 ] " " bright
+.RI [ 0|1..4|up|down|cycle|status ]
+.br
+.B numdeck
+.RI [ 选项 ] " " bright " follow " on|off
+.br
+.B numdeck
+.RI [ 选项 ] " " levels
+.RI [ 档号 " " 档值 | reset ]
+.br
+.B numdeck
+.RI [ 选项 ] " " led
+.RI [ on|off|0x41 ]
+.br
+.B numdeck
+.RI [ 选项 ] " " layout
+.RI [ 代号|auto ] " " [ \-\-ids ]
+.br
+.B numdeck
+.RI [ 选项 ] " " lang
+.RI [ zh-CN|zh-TW|en|auto ]
+.br
+.B numdeck
+.RI [ 选项 ] " " sku
+.RI [ list|auto|机型 id ]
+.SH 描述
+在 ASUS 笔记本的触摸板上模拟数字小键盘。参数取自官方
+.I AsusNUMPADFilter.inf
+中 AlgoParameters 的原值（帧长 8ms、0.1mm 单位、手势阈值 4838µm 等），
+用 evdev/uinput 在用户态实现，不替换内核模块。
+.PP
+长按触摸板右上角图标区约 496ms（62 帧 × 8ms）触发 NumLock；进入数字键盘后，
+同一片区域按 5 行 4 列映射数字键，手势可触发计算器，多指滑动滚动页面。
+.PP
+冰刃双屏（GX550/GX551/GX650）与灵耀双屏（UX582/UX482）的触摸板竖排在键盘右侧，
+数字模式由键盘上的专用键切换，不经长按图标区；长按在这类机器上不触发模式切换。
+.SH 命令
+.TP
+.B run
+作为服务运行：抓取触摸板、按数字键盘规则出键。systemd 单元调用的就是这个。
+.TP
+.B check
+自检：打印设备、坐标范围、几何换算、NumLock 通道与背光通道，不修改任何状态。
+背光部分会逐个列出 \fI/dev/hidraw*\fP 的 \fIvid:pid\fP、是否带 FEATURE 报告 0x0d、
+优先级分值 rank 以及驱动最终会选哪个节点，并给出 i2c 兜底探测结果（0x38 / 0x15）。
+换机型时先跑这一条，把输出反馈即可定位问题。
+.TP
+.B dump
+打印触摸板原始事件流（排查手势识别问题用）。Ctrl-C 结束。
+.TP
+.BI bright " 0|1..N"
+手动固定档：0 熄灭，1 最暗，N 最亮（默认 N=4）。档位由硬件全档表（熄灭 + 8 个亮度档）
+等分得到，默认四档为 0x00 / 0x43 / 0x45 / 0x48，可用配置项
+\fImanual_brightness_levels\fP 自定义档表（上限为 \fIbrightness_levels\fP 的长度）。
+写入配置文件后立即下发一次，服务在跑时自动重启让新档常驻。
+手动选档等价于关闭「跟随键盘背光」。
+.TP
+.BI bright " up|down|cycle"
+逐档变亮 / 变暗 / 全部档位循环（1→…→N→1）。\fIup\fP 封顶 N，\fIdown\fP 最低 1。
+.TP
+.BI bright " follow " on|off
+是否跟随键盘背光：\fIon\fP 恢复跟随，\fIoff\fP 固定在当前手动档。
+.TP
+.B bright status
+打印当前模式、手动档、档位映射与键盘背光实测值，只读。
+.TP
+.B levels
+不带参数时打印档位表：每档写进配置的字节值与对应报文，只读。
+.TP
+.BI levels " 档号 档值"
+把第几档改成指定值：档号取 1 到当前档数（上限 8），档值只能是 \fB0x00\fP（熄灭）
+或 \fB0x41..=0x48\fP（1..8 档），十进制、十六进制都收。整张表必须保持
+「从暗到亮不递减」，改完会写进配置并重启服务让新档生效。
+.TP
+.B levels reset
+把档位表恢复成默认四档（\fB0x00 / 0x43 / 0x45 / 0x48\fP），等价于 \fBlevels default\fP。
+.TP
+.B led
+不带参数时打印用法。绕过所有状态机与跟随逻辑，直接下发一个背光命令字，只用于诊断。
+.TP
+.BI led " on|off"
+按官方两态点灯 / 熄灭（i2c 通道会先发解锁字 0x60）。
+.TP
+.BI led " 0x41"
+直接写一个亮度档的 level 字节。\fBled on\fP 亮而 \fBled 0x41\fP 不亮，
+说明这台机器的 EC 只认两态、不认亮度档。
+.TP
+.B layout
+打印当前生效布局、全部官方布局的支持级别（\fB*\fP 已在真机验证、\fB~\fP 同族未收录、
+\fB-\fP 不支持）与几何参数，只读。
+.TP
+.B layout \-\-ids
+在上一行基础上追加触摸板 HID 硬件 ID 到布局的对照表。
+.TP
+.BI layout " 代号"
+写死布局，写进配置并重启服务。代号可用 \fBGH3XLNDZ\fP、\fBGH2XLNDZ\fP、\fBGH4XLNDZ\fP。
+.TP
+.B layout auto
+删掉写死的布局，恢复按触摸板 HID 硬件 ID 自动识别（默认行为）。
+.TP
+.B lang
+不带参数时打印当前语言、语言来源、可用语言与语言文件所在目录。
+.TP
+.BI lang " zh-CN|zh-TW|en"
+把界面语言写入配置文件，下次运行生效；支持 \fIzh_CN\fP、\fIcn\fP、\fIzh-Hant\fP、
+\fItw\fP、\fIenglish\fP 等宽松写法。
+.TP
+.B lang auto
+删掉语言设置，改为跟随系统 locale（\fILC_ALL\fP > \fILC_MESSAGES\fP > \fILANG\fP > \fILANGUAGE\fP）。
+.TP
+.B sku
+打印本机识别到的机型配置、判定依据（DMI 身份与触摸板模组）。机型在运行时自动识别，
+正常情况不需要手动干预。
+.TP
+.B sku list
+列出全部可选的机型 id 与对应机型。
+.TP
+.BI sku " 机型 id"
+手动指定机型，写进配置文件长期生效，优先于自动识别。用于虚拟机、白牌机箱、BIOS 占位串
+等读不到正确硬件信息的机器。
+.TP
+.B sku auto
+删掉手动指定的机型，恢复自动识别。
+.TP
+.B calibrate
+引导按压四角与两个对角格的中心，据采样解出面板范围与网格矩形。不带 \fB\-\-write\fP
+时只打印结果、不落盘；打印的格中心表用于在真机上逐格点一遍确认。
+仅 Linux 可交互采集（要抓触摸板事件）。
+.TP
+.BI calibrate " \-\-samples " 文件
+不解算设备，直接回放保存好的样本文件（JSON：\fBcorners\fP 四角 + \fBfirst_point\fP /
+\fBlast_point\fP 两个对角格中心），在任何平台上都能跑，便于离线调算法。
+.TP
+.BI calibrate " [\-\-cols " N "] [\-\-rows " M "]"
+按指定的列 / 行数解算（默认跟随键表），用于丝印不是 5 列 4 行的机型。
+.TP
+.BI calibrate " ... \-\-write"
+把解出的 \fBpartition\fP 写进配置文件，上一份存成 \fB.bak\fP。
+.SH 选项
+.TP
+.BI \-\-config " 文件"
+配置路径。普通用户默认 \fI~/.config/numdeck/numdeck.json\fP
+（遵循 \fBXDG_CONFIG_HOME\fP），root 默认 \fI/etc/numdeck/numdeck.json\fP。
+.TP
+.BI \-\-lang " zh-CN|zh-TW|en|auto"
+本次运行的界面语言，临时覆盖配置文件，不写盘。
+.TP
+.BI \-\-sku " 机型 id"
+本次运行强制使用该机型配置，临时覆盖自动识别与配置文件，不写盘。
+.TP
+.BI \-\-device " /dev/input/eventX"
+指定触摸板事件设备，跳过自动探测。
+.TP
+.BI \-\-keyboard " /dev/input/eventX"
+指定键盘设备（读 NumLock 指示灯状态）。
+.TP
+.BI \-\-led " auto|hidraw|i2c|none"
+背光通道，默认 auto。
+.TP
+.BI \-\-i2c\-bus " 编号"
+\fI\-\-led i2c\fP 时使用的 i2c 总线号，跳过自动探测。
+.TP
+.BI \-\-i2c\-addr " 地址"
+i2c 设备地址，只有 \fB0x38\fP 与 \fB0x15\fP 两个有效值。
+.TP
+.BI \-\-i2c\-transfer " 工具名"
+写 i2c 用的外部工具，默认 \fBi2ctransfer\fP（busybox 环境可换成 \fBi2cset\fP）。
+.TP
+.BI \-\-hidraw " /dev/hidrawN"
+强制指定背光 FEATURE 节点，跳过自动探测；仅在自动探测选错时需要。
+.TP
+.B \-\-no\-follow\-brightness
+关闭"数字区亮度跟随键盘背光"，点亮时按手动固定档（等价于 \fBbright follow off\fP）。
+.TP
+.BI \-\-numlock " sync|toggle|off"
+NumLock 联动策略，默认 toggle。
+.TP
+.BI \-\-mixed\-mode " auto|on|off"
+混合模式：数字键与光标共存（需要 /dev/uinput），默认 auto。
+.TP
+.BI \-\-key\-mode " keypad|digits"
+数字键键位风格，默认 keypad。
+.TP
+.BI \-\-layout " 代号"
+本次运行强制使用的布局代号，\fBauto\fP（默认）按触摸板 HID 硬件 ID 自动识别；
+\fBnumdeck layout\fP 列出全部可用代号与支持级别；也可填配置文件里
+.B custom_layouts
+定义的名字（见「扩展配置」）。
+.TP
+.B \-\-allow\-unverified
+显式允许使用「未收录键表的同族布局」。默认情况下布局支持级别为 family（同结构未收录）
+或 unsupported（键表结构不同、套用会按错键）时驱动拒绝启动；加本开关可强行运行，
+仅建议对 family 使用，并配合 \fBcheck\fP 逐键核对。
+.TP
+.B \-\-grab
+抓取触摸板，数字区按键不透传（默认）。
+.TP
+.B \-\-no\-grab
+不抓取触摸板；数字区点击会穿透到桌面。
+.TP
+.B \-\-dump-config
+打印生效配置（含官方参数原值）后退出。
+.TP
+.B \-v, \-\-verbose
+打印几何报告与状态变化。
+.SH 文件
+.TP
+.I ~/.config/numdeck/numdeck.json
+用户配置文件，默认写入位置，不需要 root。
+.TP
+.I /etc/numdeck/numdeck.json
+系统级配置（root 使用）。普通用户首次运行时，若用户级配置尚不存在，这里的内容会自动
+迁移到用户级路径（源文件保留）。
+.TP
+.I /etc/numdeck.json, /etc/rog-numpad.json
+旧版配置路径。启动时若用户级配置尚不存在而这两个文件存在，内容会被迁移到用户级路径
+（旧文件保留）。
+.TP
+.I /usr/lib/systemd/user/numdeck.service
+systemd 用户单元，随登录会话启动，不需要 root。手工控制：
+\fBsystemctl --user status|restart|stop numdeck\fP。
+.TP
+.I /usr/lib/udev/rules.d/99-numdeck.rules
+权限规则。
+.TP
+.I /usr/share/numdeck/lang/zh_CN.lang
+.I /usr/share/numdeck/lang/zh_TW.lang
+.I /usr/share/numdeck/lang/en.lang
+界面文案。格式为 \fB键 = 文案\fP，\fB#\fP 开头为注释，值内支持 \fB\\n\fP 换行、
+\fB\\t\fP 制表符、\fB\\s\fP 空格；缺键时按「外部文件 → 同语言内置 → 英文内置 → 键名」回落。
+.TP
+.I ~/.config/numdeck/lang/
+用户级覆盖目录，优先级最高，包升级不会覆盖，且不需要 root。
+.TP
+.I /etc/numdeck/lang/
+系统级覆盖目录，优先级高于 \fI/usr/share/numdeck/lang/\fP。
+.SH 扩展配置
+以下四个键写在配置文件里，用于覆盖官方布局表覆盖不到的机器与特殊需求。它们都是纯数据，
+写错时只忽略该项并在启动提示里说明，不会让驱动拒绝启动。
+.TP
+.B custom_layouts
+自定义布局数组。每项字段：
+.B name
+（布局名，写进 \fBlayout_name\fP 或 \fB\-\-layout\fP 即可选中，不能与内置布局重名）、
+.B base
+（基准布局：内置代号或前一条自定义布局，只需写与它不同的项）、
+.B hid_ids
+（绑定的触摸板模组 ID，如 \fBASUE1416\fP，留给 \fBauto\fP 也能命中）、
+.B keys
+（4 行键表，留空则沿用基准键表）、
+.B patch
+涉及的 15 个几何参数（\fBcolumns\fP、\fBindex0\fP、\fBindex4\fP、\fBlevel0\fP、
+\fBlevel3\fP、\fBnumlock_index\fP、\fBnumlock_level\fP、\fBleft\fP、\fBright\fP、
+\fBup\fP、\fBdown\fP、\fBnumadv_index\fP、\fBnumadv_level\fP、\fBinvalid_index\fP、
+\fBinvalid_level\fP），缺项取基准值。
+.RS
+.PP
+绑定了 \fBhid_ids\fP 的布局优先于官方映射，三级支持校验（\fBverified\fP / \fBfamily\fP /
+\fBunsupported\fP）对它不生效；绑到表里已有的模组会覆盖官方映射，启动提示会写明。
+键名可写 \fB0\fP..\fB9\fP、\fBa\fP..\fBz\fP、\fBf1\fP..\fBf24\fP、
+\fBkp0\fP..\fBkp9\fP，以及 \fBenter\fP / \fBplus\fP / \fBminus\fP / \fBperiod\fP /
+\fBslash\fP / \fBstar\fP / \fBbs\fP 等别名；同一键位写两次时后者生效。
+.RE
+.TP
+.B led_proto.template
+点亮报文模板（字节数组）。其中恰好一个字节写 \fB255\fP 作亮度档占位，长度上限 64 字节，
+首字节是 report id，不能当占位。只在触摸板会亮、但报文与内置 \fB0d 14 03 .. ad\fP
+不同的时候才需要改。
+.TP
+.B pressure_switch
+压感触摸板用力按压切换数字键盘。字段：\fBenabled\fP（默认 false）、\fBpercent\fP
+（触发阈值，压力轴满量程百分比，默认 80）、\fBframes\fP（需连续保持的帧数，一帧为
+\fBframe_ms\fP，默认 6）、\fBcooldown_ms\fP（两次切换最小间隔，默认 600）。
+.TP
+.B hotkeys
+全局组合键数组，每项 \fBgesture\fP（如 \fBctrl+alt+n\fP）+ \fBaction\fP
+（\fBtoggle\fP / \fBon\fP / \fBoff\fP，默认 \fBtoggle\fP）。
+.RS
+.PP
+示例——给表外模组配一套贴纸键表、换一条点亮报文、开压感、绑三个热键：
+.PP
+.nf
+{
+  "layout_name": "ASUE1419-贴纸",
+  "custom_layouts": [
+    {
+      "name": "ASUE1419-贴纸",
+      "base": "GH3XLNDZ",
+      "hid_ids": ["ASUE1419"],
+      "keys": ["7 8 9 / bs", "4 5 6 * minus",
+               "1 2 3 plus enter", "0 0 period . enter"]
+    }
+  ],
+  "led_proto": { "template": [13, 1, 4, 255, 1, 173] },
+  "pressure_switch": { "enabled": true, "percent": 85, "frames": 6, "cooldown_ms": 600 },
+  "hotkeys": [
+    { "gesture": "ctrl+alt+n", "action": "toggle" },
+    { "gesture": "ctrl+alt+up", "action": "on" },
+    { "gesture": "ctrl+alt+down", "action": "off" }
+  ]
+}
+.fi
+.PP
+改完先用 \fBasus\-numpad check\fP 看生效情况：自定义布局是否装进注册表、报文是否通过校验、
+压感与热键是否启用都会列在提示里。GUI 的「扩展」页签可以直接改这几项并即时预览。
+.RE
+.SH 校准配置
+机型表里的 15 项几何参数都建立在 5 列 4 行等分网格上。丝印排法不同、或内核上报的坐标
+铺不满面板的机型，用下面两个键补。写错时丢掉该项并在提示里点名，改回官方网格。
+.TP
+.B partition
+自定义分区。字段：
+.B layout
+（对哪套布局生效：\fBauto\fP 跟当前生效布局，也可写具体布局名或自定义布局名）、
+.B rect
+（\fB[x0, y0, x1, y1]\fP 触摸板原始坐标，与 \fBevtest\fP 看到的一致）、
+.B rect\_mm
+（同上，改用面板左上角起的毫米）、
+.B cols
+（列数 1..=8）、
+.B rows
+（行数 1..=4）、
+.B col\_ratios / row\_ratios
+（列宽 / 行高权重，可不等分，长度须等于列数 / 行数）、
+.B numlock\_cell
+（NumLock 图标所在格 \fB[行, 列]\fP，默认第 0 行最后一列）、
+.B snap\_outside
+（网格外落点吸附到最近一格，默认关闭，与官方「网格外属于光标区」一致）。
+\fBcols\fP / \fBrows\fP 留空时跟随键表。
+.TP
+.B calibration
+覆盖内核对坐标轴的上报，只做线性映射，不交换轴也不翻转。
+.B x / y
+各含 \fBmin\fP、\fBmax\fP（绝对值）与 \fBunits\fP\_\fBper\fP\_\fBmm\fP（每毫米单位数，
+与 evdev \fIresolution\fP 同量纲）。某一轴不写就沿用内核值；下界不小于上界、分辨率非正的
+配置会丢掉那一轴。
+.PP
+解算分区用 \fBasus\-numpad calibrate\fP；GUI 的「校准」页签同样能改这两项，还能把
+\fBpartition\fP 与 \fBcalibration\fP 打包成片段搬给同机型的人（片段不含键表）。
+.PP
+两个键里能当场判掉的坏值（列行数越界、矩形方向反了、权重个数或正负不对、NumLock 格
+越界、下界不小于上界）在读取配置时就被丢弃并在提示里点名，不用等几何构建；
+跑 \fBasus\-numpad check\fP 即可看到这些提示，其余项照常生效。
+.SH 环境变量
+.TP
+.B NUMDECK_LANG
+临时指定语言，优先级最高（高于 \fB\-\-lang\fP 与配置文件）。
+.TP
+.B NUMDECK_LANG_DIR
+追加一个语言文件搜索目录（最先查找），便于本地化试译。
+.SH 已知限制
+背光命令字（解锁 0x60、亮 0x01、灭 0x00、亮度档 0x41..0x48）来自官方 INF，但 INF 没有
+描述怎么把这些字节送到 EC（那部分在官方驱动的 WMI/ACPI 调用里）。用户态走 hidraw FEATURE
+0x0d 与 i2c 两条通用通道，hidraw 通道不需要 0x60 前置。
+首次在真机上使用若灯不亮，先用 \fBasus\-numpad led on\fP 与 \fBasus\-numpad led 0x41\fP
+区分「通道不通」与「EC 不认亮度档」，再按本机 ACPI 抓包修正 \fIi2c_payload\fP，
+不要去改状态机。
+.SH 参见
+.BR systemctl (1),
+.BR journalctl (1)

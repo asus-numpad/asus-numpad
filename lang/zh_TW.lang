@@ -1,0 +1,403 @@
+# numdeck 繁體中文語言檔案
+# 鍵值格式：key = 文案（# 開頭為註解，值內可用 \n 換行）
+# 缺少鍵值會回落到英文內建文案；可複製整份檔案到 ~/.config/numdeck/lang/ 做在地化覆蓋（免 root）。
+
+# ---- 启动横幅 ----
+app.banner = 觸控板數字小鍵盤 v{version}（Linux 使用者態，參數取自官方 AlgoParameters）
+
+# ---- 命令行总览 ----
+cli.about = 觸控板數字小鍵盤驅動（Linux，官方 AlgoParameters 對齊版）
+cli.config.help = 設定檔路徑
+cli.device.help = 觸控板事件裝置；預設自動偵測（義隆 04F3 / 原相 093A 全族，依 HID 模組辨識佈局）
+cli.keyboard.help = 鍵盤事件裝置（讀取 NumLock LED）
+cli.led.help = 背光通道：hidraw / i2c / none
+cli.i2c_bus.help = i2c 匯流排編號
+cli.i2c_addr.help = i2c 位址（0x38 或 56）
+cli.hidraw.help = hidraw 節點（例如 /dev/hidraw3）
+cli.i2c_transfer.help = i2c 寫入工具名稱
+cli.key_mode.help = 鍵位風格：keypad / digits
+cli.layout.help = 佈局代號；預設 auto 依觸控板 HID 模組自動辨識，numdeck layout 可列出全部代號
+cli.numlock.help = NumLock 連動：sync / toggle / off
+cli.mixed_mode.help = 混合模式：auto / on / off
+cli.no_follow_brightness.help = 關閉「數字區亮度跟隨鍵盤背光」，退回固定 0x01 點亮
+cli.grab.help = 抓取觸控板（預設開啟）
+cli.no_grab.help = 不抓取觸控板（數字區點擊會穿透到桌面）
+cli.dump_config.help = 印出預設設定後結束
+cli.verbose.help = 輸出逐幀除錯日誌（run 模式）
+cli.lang.help = 介面語言：zh-CN / zh-TW / en / auto（預設 auto = 跟隨系統）
+
+# ---- 子命令说明 ----
+cli.cmd.run = 接管觸控板（預設動作）
+cli.cmd.check = 自我檢查：印出官方參數、幾何換算、鍵位圖，並執行離線測項
+cli.cmd.dump = 原樣印出觸控板事件（排障用，不產生按鍵）
+cli.cmd.bright = 亮度調節：四段手動調光（0~最大線性可調、可自訂）/ 是否跟隨鍵盤背光
+cli.cmd.bright.long = 例：`bright 0|1|2|3|4`（0 = 熄滅，1 = 最暗，4 = 最亮，預設線性等分）、`bright up|down|cycle`（逐段/循環）、`bright follow on|off`、`bright status`；段位可用設定項 `manual_brightness_levels` 自行定義
+cli.cmd.bright.value = 段位 0/1/2/3/4（自訂段表時以表長為準），或 up / down / cycle / next / follow / status
+cli.cmd.bright.mode = `follow` 的取值：on / off
+cli.cmd.levels = 段位表：檢視每段位元組 / 為某一段指定任意支援亮度 / 還原預設四段
+cli.cmd.levels.long = 例：`levels`（列印目前段表）、`levels 2 0x46`（只改第 2 段，其餘不動，十進位 70 等價）、`levels reset`（還原預設四段 [0,0x43,0x45,0x48]）；每段可填 0x00（熄滅）或 0x41~0x48 八個亮度值，改完仍須由暗到亮（允許相鄰相等）
+cli.cmd.levels.step = 段號 1..N（N = 目前段數，最多 8），或 reset / default
+cli.cmd.levels.value = 該段下發的亮度：0x00 或 0x41~0x48（十進位、十六進位均可）
+cli.cmd.led = 直發背光命令字（排障用，繞過所有狀態機）
+cli.cmd.led.long = 例：led on | led off | led 0x41..0x48（1..8 段）。用於區分「驅動未送出」與「硬體不接受該值」。
+cli.cmd.led.value = on / off / 任意十六進位段位（如 0x41）
+led.cmd.usage = 用法：numdeck led on|off|0x41（0x01 亮 / 0x00 滅 / 0x41..0x48 為 1..8 段）
+led.cmd.bad_value = 無法辨識的取值：{v}（可用 on / off / 0x41 / 65）
+cli.cmd.lang = 語言：檢視 / 切換介面語言（简体中文、繁體中文、English）
+cli.cmd.lang.long = 例：`lang`（檢視目前語言與來源）、`lang zh-TW`、`lang en`、`lang auto`（跟隨系統）
+cli.cmd.lang.code = 語言代碼：zh-CN / zh-TW / en / auto
+
+# ---- 命令行参数取值无效时的提示 ----
+note.invalid_key_mode = --key-mode={v} 無效，已忽略
+note.invalid_numlock = --numlock={v} 無效，已忽略
+note.invalid_mixed_mode = --mixed-mode={v} 無效，已忽略
+note.invalid_i2c_addr = --i2c-addr={v} 無法解析，已忽略
+note.invalid_language = language={v} 無法辨識，改以 auto 處理
+note.manual_step_clamped = manual_brightness_step={step} 超出 0..={max}，已收斂至 {max}
+note.levels_dropped = brightness_levels 中有 {n} 項超出 0x{lo}..=0x{hi}，已剔除
+note.manual_levels_dropped = manual_brightness_levels 中有 {n} 項不是 0（熄滅）且不在 0x{lo}..=0x{hi} 範圍內，已剔除
+note.manual_levels_not_increasing = manual_brightness_levels 必須由暗到亮（允許相鄰兩段相等），已放棄自訂、回落到預設四段 [0,0x43,0x45,0x48]
+note.manual_levels_truncated = manual_brightness_levels 有 {n} 段，超過硬體上限 {max} 段，已截斷
+note.manual_levels_reset = manual_brightness_levels 剔除越界值後為空，已放棄自訂、回落到線性等分
+note.read_failed = 讀取 {path} 失敗，改用預設值: {err}
+note.config_migrated = 已將舊設定檔 {from} 遷移到 {to}（舊檔案保留，可自行刪除）
+
+# ---- 配置摘要与官方参数 ----
+cfg.summary = layout={layout} key_mode={mode} 長按 {frames} 幀={ms}ms 閒置 {idle}s mixed={mixed} numlock={numlock}
+param.frame_model = 幀模型
+param.cont_sendkey = {frames} 幀 = {ms} ms
+param.numlock = {frames} 幀 = {ms} ms（通用）
+param.numlock_gh3 = {frames} 幀 = {ms} ms（本機）
+param.led_values = 滅 0x{off}；亮：跟隨鍵盤背光取 0x41..0x48，讀不到時用 0x{on}（hidraw FEATURE 0x0d）
+param.i2c_unlock = 0x{unlock}（僅 i2c 通道；亮度段 0x41..0x48）
+param.i2c_unlock_name = i2c 解鎖字
+param.led_values_name = 點燈取值
+param.key_count = 虛擬鍵盤鍵位數
+
+# ---- 自检输出 ----
+check.notes_title = 設定提示：
+check.summary = 設定摘要：{summary}
+check.official_title = 官方 AlgoParameters（INF 原值）：
+check.device.probed = 裝置：已偵測到觸控板，使用真實解析度
+check.device.fallback = 裝置：未偵測到觸控板（{err}），改用設定尺寸 {w}x{h} mm 估算
+check.device.nonlinux = 裝置：目前平台非 Linux，使用設定尺寸 {w}x{h} mm 估算
+check.geometry_title = 幾何換算（官方單位 {unit} µm）：
+check.geometry_usable = 有效區 x[{x0},{x1}] y[{y0},{y1}]
+check.keygrid_title = 鍵位圖（{cols} 欄 x {rows} 列，key_mode={mode}）：
+check.keygrid_row = 列{r}
+check.keygrid_col = 欄{c}
+check.keygrid_numlock = NumLock圖示
+check.cells_title = 各格中心與命中鍵：
+check.cell_line = ({r},{c}) 中心=({cx},{cy}) → {key}
+check.behavior_title = 行為開關：
+check.b_numlock = NumLock 連動      {mode}（長按 {frames} 幀 = {ms} ms）
+check.b_mixed = 混合模式          {mode}（GESTURE_00 支援位 = 1）
+check.b_calc = 計算器長按        {state}（{frames} 幀 = {ms} ms）
+check.b_grab = 抓取觸控板        {state}
+check.b_grab_yes = 是
+check.b_grab_no = 否（點擊會穿透）
+check.b_idle = 閒置熄燈          {sec}s（熄燈不結束，觸碰復亮）
+check.b_led = 背光通道          {kind}（{where}）
+check.b_bright = 背光亮度          {text}
+check.b_bright_cmd = 調光命令          numdeck bright 1..4（0=滅，共 {steps} 段）；numdeck bright follow on|off
+check.lang_line = 介面語言          {name}（{code}）
+check.lang_source = 語言來源          {source}
+check.lang_file = 語言檔案          {path}
+check.ext_title = 擴充開關：
+check.ext_layouts = 自訂佈局          {n} 套（{names}）
+check.ext_layouts_none = 自訂佈局          無（只用官方表）
+check.ext_led = 點亮報文          {proto}
+check.ext_led_proto = {hex}（{n} 位元組）
+check.ext_pressure = 用力按切換        {text}
+check.ext_press_on = 開，{percent}% / 連續 {frames} 幀 / 冷卻 {ms}ms
+check.ext_hotkeys = 全域熱鍵          {text}
+check.ext_none = 無
+check.tests = 離線測項：見 `cargo test`（Windows / Linux 皆可執行，不依賴硬體）
+check.conclusion = 自我檢查結論：設定與幾何換算一致。
+common.enabled = 啟用
+common.disabled = 關閉
+common.auto_detect = 自動偵測
+
+# ---- 亮度状态 ----
+bright.follow_switch = 跟隨鍵盤背光：{state}
+bright.follow_on = 開（數字區亮度隨鍵盤背光自動變化）
+bright.follow_off = 關（使用手動固定檔）
+bright.status_dir = 鍵盤背光目錄：{dir}（輪詢 {ms} ms）
+bright.status_step = 手動固定檔：{step}/{steps}（0=滅，1=最暗，{steps}=最亮）
+bright.status_map = 段位對應：0→0x{off}（滅）；{table}
+levels.table = 目前段表（{steps} 段，由暗到亮）：{table}
+levels.range = 每段可填 0x00（熄滅）或 0x41~0x48；跟隨鍵盤背光時用它自己的對應，來源目錄 {src}
+levels.wrote = 第 {step} 段已設為 0x{level}，已寫入 {path}（備份 {backup}）
+levels.reset = 段位表已還原預設四段 [0, 0x43, 0x45, 0x48]，已寫入 {path}（備份 {backup}）
+levels.err_step = 段號必須是 1~{steps} 之間的整數，收到：{step}
+levels.err_value = 亮度值只能是 0x00 或 0x41~0x48（十進位 65~72），收到：{value}
+levels.err_order = 第 {step} 段改成這個值會比前一段暗，已拒絕；先調後面的段，或 levels reset 重來
+levels.usage = 用法：`levels`（檢視）/ `levels <段號> <亮度>`（如 `levels 2 0x46`）/ `levels reset`
+bright.status_effective = 生效點燈值：{text}
+bright.measured = 鍵盤背光實測：{kbd}/{max} → 數字區 0x{cur}
+bright.measure_failed = 鍵盤背光實測：讀不到 {dir}（非 ASUS 機型 / asus-wmi 未載入）
+bright.report.follow = 跟隨鍵盤背光 {kbd}/{max} → 0x{level}（{n} 段，{ms} ms 輪詢，{dir}）
+bright.report.follow_nodir = 跟隨鍵盤背光（讀不到鍵盤背光節點，退回固定 0x{level}）
+bright.report.static = 不跟隨鍵盤背光，固定檔 {step} → 0x{level}（`bright 1..N` 調整，`bright follow on` 恢復跟隨）
+
+# ---- 亮度命令 ----
+bright.usage = 用法：numdeck bright 0|1..N    固定檔（0=滅；1=最暗；N=最亮，預設 N=4，線性等分）\n      numdeck bright up|down|cycle  逐段 / 循環切換\n      numdeck bright follow on|off  是否跟隨鍵盤背光\n      numdeck bright status         檢視目前狀態與段位對應表
+bright.follow_usage = 用法：numdeck bright follow on|off
+bright.err_unmappable = 段位 {step} 無法換算成亮度位元組（請檢查 brightness_levels 設定）
+bright.sent = 已下發亮度 0x{level}（通道 {kind}）
+bright.send_failed = 下發 0x{level} 失敗：通道不通（請檢查 --hidraw 節點與 udev 的 uaccess 規則是否命中）
+bright.nonlinux = 目前平台非 Linux，不下發報文（僅顯示換算結果）。
+bright.wrote_step = 已寫入 {path}：manual_brightness_step = {step}，follow_keyboard_brightness = false（備份 {backup}）
+bright.wrote_follow = 已寫入 {path}：follow_keyboard_brightness = {on}（備份 {backup}）
+bright.effect_off = 效果：數字區熄滅（bright 1..N 可重新點亮）。
+bright.effect_fixed = 效果：數字區固定 0x{level}（不再隨鍵盤背光變化）。
+bright.effect_follow_on = 效果：數字區亮度重新跟隨鍵盤背光（鍵盤背光一變化即同步）。
+bright.effect_follow_off = 效果：數字區改用固定檔 {step}（0x{level}），鍵盤背光變化不再影響數字區。
+bright.switch = 切換段位：{from} → {to}
+bright.switch_up = 切換段位：{from} → {to}（已是最高段則維持不變）
+bright.switch_down = 切換段位：{from} → {to}（最低段為 1，熄滅請用 bright 0）
+
+# ---- 写配置与服务重启 ----
+persist.bad_json = {path} 不是合法 JSON，已中止（未做任何修改）
+persist.mkdir_failed = 無法建立目錄 {dir}
+persist.backup_failed = 備份 {path} 失敗，已中止
+persist.write_failed = 寫入 {path} 失敗（檢查該檔案與所在目錄的擁有者、權限）
+svc.not_running = 提示：numdeck 服務未在執行，下次啟動時依新設定生效。
+svc.restarted = 已重新啟動 numdeck 服務，新設定立即生效。
+svc.restart_failed = 自動重新啟動服務失敗，請手動執行：systemctl --user restart numdeck
+
+# ---- 语言命令 ----
+lang.current = 目前語言：{name}（{code}），來源：{source}
+lang.source.env = 環境變數 NUMDECK_LANG
+lang.source.cli = 命令列 --lang
+lang.source.config = 設定檔 language
+lang.source.locale = 系統 locale
+lang.source.default = 內建預設（英文）
+lang.available = 可用語言：{list}
+lang.dirs = 語言檔案目錄：{dirs}
+lang.file = 語言檔案：{path}
+lang.file_builtin = 語言檔案           使用二進位內建文案（未找到外部 .lang 檔案）
+lang.wrote = 已寫入 {path}：language = {value}（備份 {backup}）
+lang.usage = 用法：numdeck lang [zh-CN|zh-TW|en|auto]   檢視或切換介面語言\n臨時覆蓋：numdeck --lang en check
+lang.bad_code = 無法辨識的語言：{v}（可用：zh-CN / zh-TW / en / auto）
+lang.restart_hint = 下次執行 numdeck 時生效（本次輸出仍為目前語言）。
+lang.effect_auto = 之後依系統 locale 自動選擇語言（目前判定為 {name}）。
+
+# ---- dump 与 run 模式 ----
+dump.mode = dump 模式：原樣印出觸控板事件，不產生任何按鍵。按 Ctrl+C 結束。
+dump.nonlinux = 目前平台不支援 evdev，無法 dump。請在目標 Linux 機器上執行。
+dump.header = 正在讀取 {path}（{name}），Ctrl-C 結束
+run.brightness = 背光亮度：{text}
+run.already_running = 已有一個 numdeck 實例在執行，本次結束。
+run.reloading = 收到重載訊號，結束並等待重新啟動以套用新設定。
+run.nonlinux = 目前平台不支援 evdev / uinput，run 僅能在 Linux 上執行。
+run.nonlinux_hint = 可用 `numdeck check` 檢視參數與幾何換算。
+run.device =   裝置: {path}（{name}）
+run.device_lost = 觸控板已中斷連線（{err}），結束以釋放裝置。
+
+# ---- 设备探测与底层日志 ----
+dev.open_failed = 開啟 {path} 失敗
+dev.no_touchpad = 沒找到觸控板裝置。已掃描: {seen}\n請用 --device /dev/input/eventX 指定
+dev.no_permission = （無 /dev/input 存取權限）
+dev.no_abs_x = 無 ABS_MT_POSITION_X
+dev.no_abs_y = 無 ABS_MT_POSITION_Y
+dev.warn.grab = [警告] EVIOCGRAB 失敗: {err}
+dev.warn.uinput = [警告] 無法建立虛擬觸控板（{err}），混合模式降級為純數字鍵盤
+dev.warn.uinput_rebuild = [警告] 虛擬裝置工作階段已失效，已自動重建
+dev.report.device = 裝置: {path}（{name}）
+dev.report.touch_axes = 觸控軸: MT_X={x} MT_Y={y} TRACKING_ID={tid}
+dev.report.keyboard_led = 鍵盤 LED 通道: {state}
+dev.report.keyboard_ok = 可用
+dev.report.keyboard_ng = 不可用（NumLock 連動降級）
+dev.report.backlight = 背光: {kind}
+led.warn.open = [警告] 開啟 {path} 失敗: {err}
+led.info.reattach = [資訊] 背光節點已變更，自動接回 {old} → {new}
+led.warn.feature = [警告] 寫入 {path} 的 FEATURE 報告 0x{rid}（level 0x{level}）失敗: {err}
+led.warn.tool = [警告] {tool} 寫入 0x{value} 失敗: {err}
+led.warn.exec = [警告] 無法執行 {tool}: {err}
+led.warn.no_feature = [警告] {dev} 是 {vid}:{pid} 但沒有 FEATURE 報告 0x{rid}，仍按它嘗試
+led.warn.fallback_asus = [警告] 未找到 {vid}:{pid} 背光節點，回退到 ASUS 節點，可能點不亮
+led.warn.bad_kind = [警告] --led {v} 無效，改以 auto 處理
+led.warn.no_access = [warn] 讀不到 {dev} 的 FEATURE 報告 0x{rid}（權限不足）；用 `numdeck check` 查 udev 提示，不要據此判定硬體缺失
+led.none.explicit = 明確關閉
+led.none.no_hidraw = 未找到 ASUS hidraw 節點
+led.none.no_i2c = 未找到 i2c 從裝置 0x38
+led.none.any = 既無 hidraw 也無 i2c，背光不可用
+bright.warn.no_kbd_dir = [警告] 讀不到 {dir}，數字區亮度退回 0x{level}（如需明確關閉跟隨請用 --no-follow-brightness）
+
+# ---- 引擎状态日志 ----
+[警告] 抓取觸控板失敗，數字區點擊會穿透到桌面。若已有實例在執行（使用者級服務開機自啟即會佔用裝置），先 `systemctl --user stop numdeck` 再前景偵錯，否則兩個程序必然爭搶（EBUSY）。
+engine.state.lit = [狀態] 背光點亮（{reason}）
+engine.state.dark = [狀態] 背光熄滅（{reason}）
+engine.state.enter = [狀態] 數字鍵盤 開啟
+engine.state.exit = [狀態] 數字鍵盤 關閉
+engine.state.calc = [狀態] 喚起計算器
+engine.state.resync = [狀態] 喚醒後重新對齊背光
+engine.state.syn_dropped = [狀態] 事件遺失，已復位觸點與按鍵
+engine.reason.enable = 啟用態補燈
+engine.reason.enter = 開啟數字鍵盤
+engine.reason.exit = 關閉數字鍵盤
+engine.reason.idle = 閒置 {sec}s 熄燈
+engine.reason.touch = 觸碰喚醒
+engine.reason.numlock_on = NumLock 打開
+engine.reason.numlock_off = NumLock 關閉
+engine.bright.line = [亮度] 鍵盤背光 {kbd} → 數字區 0x{level}
+engine.geo.range = 觸控板座標範圍 x[{x0},{x1}] y[{y0},{y1}]
+engine.geo.unit = 1 unit = {ux} µm(X) / {uy} µm(Y)
+engine.geo.official = 官方 GH3XLNDZ 換算結果：{text}
+engine.warn.grab = [warn] 無法獨占觸控板：數字鍵照常輸出，但游標仍會移動
+cfg.err.mixed_mode = 無效 mixed_mode：{v}
+cfg.err.brightness_levels = brightness_levels[{idx}] 無法解析為 0..255：{item}（可用 65 或 "0x41"）
+common.list_sep = 、
+
+# ---- 佈局（v8：跨機型通用） ----
+cli.allow_unverified.help = 允許使用尚未實機驗證的佈局出鍵（預設拒絕，避免誤按鍵）
+cli.cmd.layout = 佈局：檢視官方佈局表 / 依 HID 硬體 ID 自動辨識 / 固定佈局
+cli.cmd.layout.long = 不帶參數列出全部官方佈局與支援等級；`layout auto` 恢復自動辨識；`layout GH3XLNDZ` 固定佈局；`layout --ids` 列出 HID 硬體 ID 對照表
+cli.cmd.layout.name = 佈局名（GH3XLNDZ / GH2XLNDZ / GH4XLNDZ / auto）
+cli.cmd.layout.ids = 同時列出觸控板 HID 硬體 ID → 佈局的對照表
+cli.sku.help = 手動指定機型設定，跳過自動辨識（機型 id 用 `numdeck sku` 查看）
+cli.cmd.sku = 機型設定：查看自動辨識結果、列出可選機型、手動指定
+cli.cmd.sku.long = 不帶參數時顯示辨識出的機型、判定依據、本機 DMI 身分與觸控板模組；`sku list` 列出全部可選機型；`sku g614` 手動指定；`sku auto` 恢復自動辨識
+cli.cmd.sku.id = 機型 id，或 auto / list
+cli.sku.help.arm = 本建置不含機型表，只接受 `custom`（等於不指定）
+cli.cmd.sku.long.arm = 不帶參數時顯示目前機型與觸控板模組；ARM64 建置不含華碩機型表，因此機型恆為「自訂佈局」、`sku list` 只列出 `custom`；鍵位與小鍵盤幾何由設定檔裡的 custom_layouts 決定
+layout.current = 目前佈局：設定 {layout}，實際生效 {resolved}（{support}）
+layout.list_title = 官方 AsusNUMPADFilter.inf 收錄的佈局（* 已驗證 / ~ 同族、參數照錄但未上實機 / - 無鍵位依據）：
+layout.legend = * 已驗證   ~ 同族未驗證（需 --allow-unverified）   - 不支援
+layout.custom_title = 設定裡已裝上的自訂佈局（custom_layouts）：
+layout.custom_line = + {name} 欄數={cols} HID={hids}
+layout.ids_title = 觸控板 HID 硬體 ID → 佈局（同 ID 的機型可直接通用）：
+layout.usage = 用法：numdeck layout                 檢視目前佈局與佈局表
+      numdeck layout --ids           附帶 HID 硬體 ID 對照表
+      numdeck layout auto            依觸控板 HID 硬體 ID 自動辨識（建議）
+      numdeck layout GH3XLNDZ        固定佈局
+layout.wrote = 已寫入 {path}：layout_name = {value}（備份 {backup}）
+layout.effect_auto = 下次啟動依觸控板 HID 硬體 ID 自動選佈局，無法辨識時回退 GH3XLNDZ
+layout.unverified_warn = 注意：佈局 {layout} 為 {support} 等級，鍵位表未經實機驗證
+layout.bad_name = 未知佈局名：{v}
+note.layout_unknown = layout_name={v} 不在官方佈局表內，按 auto 處理
+err.layout_unverified = 佈局 {layout}（{support}）尚未實機驗證，已停止啟動以免按錯鍵。確認可用後加 --allow-unverified。
+err.layout_unverified.hint = 允許使用的方式：numdeck --allow-unverified run，或在 /etc/numdeck/numdeck.json 裡設 "allow_unverified_layout": true
+err.layout_unsupported.hint = 該鍵表未經實機核對，且無鍵位排布依據，直接使用可能誤按鍵；請把 `numdeck check` 的輸出回報給維護者以補充核對
+err.layout_custom.hint = 本建置不含內建機型表，需先設定一份自訂佈局：在 /etc/numdeck/numdeck.json 的 custom_layouts 裡加一條（hid_ids 綁觸控板、keys 錄鍵位），或用圖形介面的擴充（Extend）頁加入，詳見 https://numdeck-dev.github.io/
+dev.report.layout = 佈局：{layout}（{support}，來源 {source}，HID {hid}）
+
+# 跨机型背光自检 / cross-model backlight self-check
+common.yes = 是
+common.no = 否
+check.led_probe_title = 背光候選節點（依優先序排列）:
+check.led_probe_line = {dev}  {vid}:{pid}  FEATURE0x0d={feature}  rank={rank}  {state}
+check.led_probe_noperm_hint = 有節點因權限讀不到：先依上面的提示解決權限，再判斷硬體是否存在。
+check.led_probe_unknown = 讀取失敗
+check.led_probe_noperm = 權限不足
+check.led_probe_selected = [驅動會選中]
+check.led_probe_idle = [備選]
+check.led_probe_skip = [跳過：無線接收器]
+check.led_probe_i2c = 背光 i2c: bus={bus} addr=0x{addr}
+check.led_probe_i2c_none = 背光 i2c: 未發現 0x38/0x15 裝置
+
+# ---- 机型（SKU）分包 ----
+sku.model = 目前機型設定：{sku} —— {source}
+sku.source.manual = 手動指定
+sku.source.dmi = 由 DMI 型號自動辨識
+sku.source.hardware = 由觸控板模組自動辨識
+sku.source.custom = 依自訂版面執行
+sku.detail = 判定依據：{detail}
+sku.note = 機型備註：{note}
+sku.compat = 相容情況詳見官網：https://numdeck-dev.github.io/
+sku.dmi = 本機 DMI 身分：{dmi}
+sku.dmi_unknown = 本機 DMI 身分：讀不到（非 Linux 或 /sys/class/dmi/id 不可讀）
+sku.hw = 本機觸控板模組：{hw}
+sku.list = 可選擇機型：{ids}
+sku.set = 已指定機型 {sku}（{path}），重新啟動服務後生效
+sku.clear = 已取消手動指定，恢復自動辨識（{path}）
+sku.bad_id = 沒有機型「{id}」，可選：{ids}
+note.sku_unknown = 機型 id「{id}」不在機型表裡（已忽略，仍按自動辨識）。可選：{ids}
+err.not_asus = 本機廠商是 {vendor}，不在機型表裡。若確認這塊觸控板是 NumberPad 類，可用 --sku 手動指定機型。
+err.unsupported_stop = 已拒絕啟動。
+err.unsupported_model = 本機不在支援的機型清單裡（{ids}）。
+err.unsupported_hint = 硬體資訊讀不準時（虛擬機、白牌機箱、BIOS 佔位串）可手動指定機型：numdeck sku <id>
+err.no_numpad = 本機觸控板沒有 NumberPad 硬體：HID 報告描述符裡沒有 FEATURE 報告 0x0d，數字區背光與圖示區都不存在，拒絕啟動。
+err.no_numpad.hint = 只有帶 NumberPad 的配置才匯出 FEATURE 0x0d。4 區 RGB 鍵盤的配置（同型號的減配檔，中國市場「魔霸新銳」即此類）觸控板與帶硬體的機型同款，但不存在圖示區，無法透過軟體補足。硬體確實帶 NumberPad 卻報此錯時，把 `numdeck check` 的輸出回饋給維護者。
+err.numpad_no_access = 讀不到觸控板的報告描述符（權限不足），無法確認 NumberPad 是否存在，繼續啟動；數字區若沒有反應，先檢查 udev 的 uaccess 規則。
+layout.source.auto = 依觸控板模組自動辨識
+layout.source.fixed = 由設定或命令列指定
+layout.source.sku = 依辨識到的機型推斷，模組 ID 讀不到
+layout.source.unknown_hid = 模組 ID 不在版面表內
+layout.source.fallback = 預設版面，模組 ID 讀不到
+layout.source.custom_none = 未設定自訂版面（本建置不含內建機型表）
+sku.nonlinux = 機型判定：略過，DMI 與 hidraw 只在 Linux 上可讀（請在目標機上執行）
+
+# 機型展示名與判定依據（譯文；未翻譯時回落到內建中文原文）
+sku.g533.display = ASUS 槍神6 / 魔霸6，15 吋，2022（G533Z* / G513R*）
+sku.g533.note = 模組 ASUE1403 / ELAN1403 → 鍵表 GH2XLNDZ（同族）。2022 代（槍神6 G533Z*、魔霸6 15 吋 G513R*）才有 NumberPad；2021 代（G533Q* / G513Q* / G513I*）官方規格無此硬體，由 excludes 排除在識別範圍之外，不併入本配置。注意 2022 代亦非全系配置：魔霸6 官方 5 個配置裡 3 個是 4 區 RGB 版，無此硬體
+sku.g614.display = ASUS 槍神7 / 槍神8 及超競版，16 吋，2023–2024（G614 / G634）
+sku.g614.note = G614 與 G634 同一塊觸控板（ASUE1416 / ASUF1416 → GH3XLNDZ）；型號前綴不保證有硬體：2023 代官方 10 個配置裡 2 個是 4 區 RGB 版（尾綴 EACX）無 NumberPad，國行「魔霸新銳」全系即此類，啟動時偵測不到 FEATURE 0x0d 即按不相容拒絕啟動
+sku.g615.display = ASUS 槍神9 / 槍神10 及超競版，16 吋，2025–2026（G615 / G635）
+sku.g615.note = PixArt ASCP1400 / ASCF1400 → GH4XLNDZ（同族）。G615 為標準版、G635 為超競版；2026 年的槍神10 沿用同一對代號，模組取值來自 2025 代。2025 代官方 25 個配置裡有 1 個（90NR0LJ1-M005P0）是不帶 NumberPad 的 4 區 RGB 版，國行「魔霸新銳 2025」（G614PM / G614PR 8940HX 與酷睿版）同屬此類。同代的 ProArt P16（H7606）觸控板是 DialPad 智慧旋鈕，不屬於 NumberPad，不併入本配置
+sku.gx550.display = ASUS 冰刃雙屏，15 / 16 吋，側置觸控板（GX550 / GX551 / GX650）
+sku.gx550.note = GX550 / GX551 / GX650 同屬 gx551 鍵位族；模組 ASUE1408 → GVM_A、ASUE1404 → GVM。GVM_A 與 GVM 共用同一份參數（官方 NUMPADLAYOUT_GVM_* 只列到 _06，其餘項按預設 0），鍵表狀態是同族、未上真機。觸控板豎排在鍵盤右側，數字模式由鍵盤上的專用鍵切換，不是長按圖示區（見 README「雙屏機型：側置觸控板」）
+sku.ux582.display = ASUS 靈耀雙屏，側置觸控板（UX582 / UX482）
+sku.ux582.note = 模組 ASUE1406 / ELAN1406 → 鍵表 NVM（官方 NUMPADLAYOUT_NVM_* 只列到 _12，其餘項按預設 0），鍵表狀態是同族、未上真機。觸控板在鍵盤右側，數字模式由鍵盤上的專用鍵切換，不是長按圖示區
+sku.custom.display = 自訂版面（不含機型表，不判定機型）
+sku.custom.note = 本建置不含華碩機型表：不依 DMI 型號或觸控板模組判定機型，直接走自訂佈局。在設定檔 custom_layouts 裡加一條（hid_ids 綁觸控板、keys 錄鍵位），或用圖形介面的擴充（Extend）頁加入；沒有自訂佈局時啟動會停下
+
+# ---- 自訂擴充：報文 / 佈局 / 壓感 / 熱鍵 ----
+note.custom_layout_no_name = 有一條自訂佈局缺少 name，已忽略
+note.custom_layout_builtin_clash = 自訂佈局「{name}」與內建佈局同名，已忽略
+note.custom_layout_base_missing = 自訂佈局「{name}」的 base「{base}」不存在，已忽略
+note.custom_layout_bad_keys = 自訂佈局「{name}」鍵表有誤，已忽略：{err}
+note.custom_layout_bad_columns = 自訂佈局「{name}」欄數 {n} 超出 1..=8，已忽略
+note.custom_hid_override = HID {hid}：自訂佈局「{name}」覆蓋了內建佈局「{builtin}」
+note.led_proto_invalid = 自訂點亮報文無效（{err}）
+note.pressure_switch_on = 已啟用壓感切換：壓力達到 {percent}% 並維持 {frames} 幀即切換
+note.pressure_clamped = 壓感閾值超出範圍，已修正為 {percent}% / 連續 {frames} 幀
+note.hotkey_bad = 熱鍵「{spec}」無效，已忽略：{err}
+engine.pressure.toggle = 壓感觸發切換（{value}/{max}）
+engine.hotkey.fired = 熱鍵觸發：{action}（{key}）
+
+# ---- 自訂分區 / 手動校準（非原生機型）----
+cli.cmd.calibrate = 手動校準：按四角與兩格中心，反解面板範圍與網格矩形
+cli.cmd.calibrate.long = 依序按住觸控板四角，再按住兩個對角格的中心，由實測落點反解網格幾何。不加 --write 只印出不寫設定；--samples 用已存好的樣本檔回放，不佔裝置、可離線調演算法。最後會印出每格中心座標，方便在實機上一格一格核對
+cli.cmd.calibrate.samples = 讀樣本檔代替互動擷取（JSON：corners / first_point / last_point）
+cli.cmd.calibrate.write = 把解算出的分區寫入設定（保留 .bak 備份）
+cli.cmd.calibrate.cols = 以幾欄校準（預設跟隨目前版面鍵表）
+cli.cmd.calibrate.rows = 以幾列校準
+calibrate.intro = 請依序按住觸控板四個角，每次按住後放開。順序：左上、右上、左下、右下。
+calibrate.intro_cells = 接著按住兩個對角格的中心：左上那一格，和右下那一格。
+calibrate.prompt.tl = 按住左上角...
+calibrate.prompt.tr = 按住右上角...
+calibrate.prompt.bl = 按住左下角...
+calibrate.prompt.br = 按住右下角...
+calibrate.prompt.cell_first = 按住左上格中心...
+calibrate.prompt.cell_last = 按住右下格中心...
+calibrate.timeout = 等不到穩定的落點，已中止
+calibrate.need_linux = 互動擷取需要 Linux 觸控板裝置；改用 --samples FILE 回放樣本檔
+calibrate.from_samples = 樣本來源：{path}
+calibrate.bad_keys = {cols} 欄 x {rows} 列超出 1..=8，無法校準
+calibrate.fail = 校準失敗：{err}
+calibrate.ok_title = 校準結果
+calibrate.panel = 實測角點範圍：x {x0}..{x1}  y {y0}..{y1}
+calibrate.grid = 網格：{cols} 欄 x {rows} 列  [{x0}, {y0}] .. [{x1}, {y1}]
+calibrate.cell_size = 格尺寸：{w} x {h} units
+calibrate.grid_title = 每格中心（實機上逐格點一下核對）：
+calibrate.written = 已寫入 {path}
+calibrate.snippet_title = 設定片段：
+calibrate.snippet_hint = 將它放到設定的 "partition" 鍵下，或加 --write 直接寫入。
+calibrate.samples.read_failed = 讀不到 {path}
+calibrate.samples.bad_json = {path} 不是合法 JSON
+calibrate.samples.missing = 樣本檔缺少「{k}」
+calibrate.samples.bad_pair = 「{k}」必須是 [x, y] 兩個整數
+note.calibration_inverted = 校準 {axis} 軸的下界不小於上界，該軸已忽略
+note.calibration_bad_units = 校準 {axis} 軸的 units_per_mm 必須為正數，已忽略
+note.partition_invalid = 自訂分區被拒絕，已回退到官方網格：{err}
+note.partition_extra_cols = 分區有 {have} 欄，鍵表只有 {want} 欄，多出的欄不出鍵
+note.partition_extra_rows = 分區有 {have} 列，鍵表只有 {want} 列，多出的列不出鍵
+note.partition_on = 已啟用自訂分區（版面：{layout}）
+note.partition_cols_range = 自訂分區的欄數 {v} 超出 1..=8，已忽略該欄數
+note.partition_rows_range = 自訂分區的列數 {v} 超出 1..=8，已忽略該列數
+note.partition_rect_bad = 自訂分區的 {what} [{vals}] 方向相反或沒有面積，已忽略該值
+note.partition_ratio_mismatch = {what} 有 {have} 項，網格需要 {want} 項，已忽略這組權重
+note.partition_ratio_bad = {what} 裡有非正數或非有限值，已忽略這組權重
+note.partition_numlock_outside = NumLock 格 [{r}, {c}] 超出 {rows}x{cols} 網格，已改用預設格

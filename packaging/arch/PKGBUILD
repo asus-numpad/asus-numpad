@@ -1,0 +1,59 @@
+# shellcheck shell=bash
+# Maintainer: numdeck maintainers <maintainers@example.invalid>
+#
+# 本地构建：./packaging/arch/make-arch.sh（会先打 tarball 再调本文件）
+# AUR 构建：makepkg -si
+#
+# shellcheck disable=SC2034  # pkgver/arch/depends 等由 makepkg 读取，本文件内看似未使用
+# shellcheck disable=SC2154  # srcdir / pkgdir 由 makepkg 注入
+pkgname=numdeck
+pkgver=1.0.3
+pkgrel=1
+pkgdesc="ASUS 触摸板数字小键盘（NumberPad）用户态驱动，官方 AlgoParameters 对齐"
+arch=('x86_64' 'aarch64')
+url="https://github.com/numdeck-dev/numdeck"
+license=('GPL-3.0-or-later')
+depends=('glibc')
+optdepends=('systemd: 开机自启与日志'
+            'usbutils: 排查 hidraw 背光通道')
+conflicts=('numdeck-git')
+backup=('etc/numdeck/numdeck.json')
+install="$pkgname.install"
+options=('!lto' 'strip')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "$srcdir/$pkgname-$pkgver" || exit 1
+    # 发行版环境优先离线构建；只有带了 Cargo.lock 才能 --locked
+    if [[ -f Cargo.lock ]]; then
+        cargo build --release --locked --offline || cargo build --release --locked
+    else
+        cargo build --release
+    fi
+}
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver" || exit 1
+
+    install -Dm0755 "target/release/numdeck" "$pkgdir/usr/bin/numdeck"
+    install -Dm0644 packaging/common/numdeck.service \
+        "$pkgdir/usr/lib/systemd/system/numdeck.service"
+    install -Dm0644 packaging/common/99-numdeck.rules \
+        "$pkgdir/usr/lib/udev/rules.d/99-numdeck.rules"
+    install -Dm0644 packaging/common/numdeck.1 \
+        "$pkgdir/usr/share/man/man1/numdeck.1"
+    install -Dm0644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm0644 LICENSE    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+    install -d "$pkgdir/etc/numdeck"
+    cat > "$pkgdir/etc/numdeck/numdeck.json" <<'JSON'
+{
+  "numlock": "sync",
+  "calc_gesture": true,
+  "calc_gesture_mode": "long",
+  "mixed_mode": "auto",
+  "grab": true
+}
+JSON
+}

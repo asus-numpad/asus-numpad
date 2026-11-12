@@ -1,0 +1,896 @@
+name: release
+
+# 推 v* 标签即发版：
+#   1. 各发行版容器里出包（deb / rpm / apk / arch / 静态 tarball）
+#   2. 汇总成 APT / RPM / Pacman / Alpine 四套仓库，写入 main 的 repo/
+#   3. 全部产物挂到 GitHub Release
+#
+# 用户侧的软件源地址见 docs/install.md。
+#
+# 出包一律走 `docker run` 而不是 job 级 container：Alpine/Arch 容器里没有 glibc，
+# actions/checkout 这类 JS action 跑不起来；源码用只读方式挂进去，在容器内复制一份
+# 再编译，宿主目录的属主和权限就不会被容器里的 root/builder 弄脏。
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 版本号（不带 v）
+        required: true
+        default: 1.1.1
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: 生成锁文件（若还没有）
+        run: if [ ! -f Cargo.lock ]; then cargo generate-lockfile; fi
+      - name: cargo test
+        run: cargo test --all-targets
+      - name: cargo clippy（-D warnings）
+        run: |
+          rustup component add clippy
+          cargo clippy --all-targets -- -D warnings
+      - name: cargo fmt
+        run: |
+          rustup component add rustfmt
+          cargo fmt --all -- --check
+      - name: shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck
+          shellcheck -x -S warning \
+            packaging/build.sh packaging/lib/common.sh \
+            packaging/deb/make-deb.sh packaging/rpm/make-rpm.sh \
+            packaging/arch/make-arch.sh packaging/arch/PKGBUILD \
+            packaging/arch/numdeck.install tools/repo-gen.sh \
+            packaging/tarball/make-tarball.sh packaging/alpine/make-alpine.sh
+      - name: shellcheck（POSIX sh 部分）
+        run: |
+          shellcheck -s sh -S warning \
+            packaging/deb/postinst packaging/deb/prerm packaging/deb/postrm \
+            packaging/tarball/install.sh packaging/tarball/uninstall.sh \
+            packaging/alpine/numdeck.post-install
+
+  # 各发行版在自己的容器里出包。容器常驻、分阶段跑，是为了让失败落在 step 名上：
+  # 拿不到 Actions 日志时，step 名就是唯一线索。每个阶段的输出都 tee 到 logs/，
+  # 由 diagnose job 汇总后推到一个分支，便于事后复盘。
+  package:
+    needs: test
+    runs-on: ${{ matrix.arch.runner }}
+    # 这里刻意不写 job 级 continue-on-error：它会把 job 的 conclusion 改成 success，
+    # 下游 publish 的 needs.package.result == 'success' 就成了摆设，
+    # 「缺 arch 包也照样发版」这种事故会被直接放行。
+    # matrix 之间已用 fail-fast: false 保证互不打断，不需要额外容错。
+    strategy:
+      fail-fast: false
+      matrix:
+        # 两个架构各出一整套包。ARM64 走 GitHub 的原生 arm runner：容器里拉到的
+        # 就是 arm64 镜像，编出来的包天然是本机架构，不涉及交叉编译。
+        # x86_64 那份继续在 amd64 runner 上跑，两边互不影响。
+        arch:
+          - { name: x86_64,  runner: ubuntu-latest }
+          - { name: aarch64, runner: ubuntu-24.04-arm }
+        fmt:
+          # deb 只出「一份通用包」：在 Ubuntu 22.04（glibc 2.35）里编。
+          # 一份包装得上 Ubuntu 22.04/24.04、Debian 12/13、Mint 21/22 整条 apt 线。
+          # 以前按发行版各编一份（jammy/noble/bookworm/trixie），四份二进制内容
+          # 其实一样、只差 glibc 下限，纯重复，已删掉三条。
+          - name: deb
+            image: ubuntu:22.04
+            deps: |
+              set -eux
+              apt-get update
+              apt-get install -y --no-install-recommends curl ca-certificates dpkg-dev fakeroot build-essential
+              curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+              ln -sf "$HOME/.cargo/bin/"* /usr/local/bin/
+            build: bash ./packaging/deb/make-deb.sh --out dist
+          # rpm 同理：AlmaLinux 9（glibc 2.34）编一份，覆盖 RHEL 9/10、Rocky、
+          # Alma、Fedora、openSUSE。spec 只用标准宏、不读发行版私有宏，所以一份
+          # 包能通用；原先的 fedora / opensuse 两条线只是把同样的活重跑一遍。
+          - name: rpm
+            image: almalinux:9
+            deps: |
+              set -eux
+              dnf install -y 'dnf-command(config-manager)' || true
+              dnf install -y epel-release || true
+              dnf install -y cargo rust gcc gcc-c++ make rpm-build systemd-rpm-macros tar gzip
+            build: bash ./packaging/rpm/make-rpm.sh --out dist
+          # Arch 与 Alpine 不存在「跨版本通用」：Arch 是滚动版，Alpine 走 musl，
+          # 各出一份原生包属于必需品，不算重复。
+          - name: arch
+            image: archlinux:latest
+            deps: |
+              set -eux
+              pacman -Syu --noconfirm --needed base-devel rust sudo libarchive
+              id builder >/dev/null 2>&1 || useradd -m builder
+              mkdir -p /etc/sudoers.d
+              echo 'builder ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/builder
+              chmod 0440 /etc/sudoers.d/builder
+              chown -R builder:builder /build
+            build: su builder -c 'cd /build && bash ./packaging/arch/make-arch.sh --out dist'
+          - name: alpine
+            image: alpine:latest
+            deps: |
+              set -eux
+              apk add --no-cache alpine-sdk cargo rust bash tar gzip sudo
+              id builder >/dev/null 2>&1 || adduser -D builder
+              # abuild 要求执行者在 abuild 组里，否则第一步建依赖就报
+              # "User builder is not a member of group abuild"
+              addgroup builder abuild
+              mkdir -p /etc/sudoers.d
+              echo 'builder ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/builder
+              chmod 0440 /etc/sudoers.d/builder
+              su builder -c 'export HOME=/home/builder; abuild-keygen -a -i -n' || true
+              chown -R builder:builder /build
+            # abuild 不接受 root 运行，且必须有自己的签名密钥，都放在 builder 下
+            build: su builder -c 'export HOME=/home/builder; cd /build && bash ./packaging/alpine/make-alpine.sh --out dist'
+        # Arch 官方容器镜像只有 amd64：Arch Linux ARM 是另一套独立生态（自己的
+        # 仓库与签名），在 amd64 容器里造 aarch64 的 pacman 包没有意义，那份包装
+        # 不进我们的 pacman 仓库。PKGBUILD 里保留 aarch64 是给 ArchLinuxARM 用户
+        # 自己 makepkg 用的，不在这里出二进制。
+        exclude:
+          - arch: { name: aarch64 }
+            fmt:  { name: arch }
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: 建日志目录
+        run: mkdir -p logs
+
+      - name: 起容器并复制源码（${{ matrix.fmt.name }}-${{ matrix.arch.name }}）
+        run: |
+          set -euo pipefail
+          docker rm -f npbuild >/dev/null 2>&1 || true
+          docker create --name npbuild -v "$PWD:/src:ro" "${{ matrix.fmt.image }}" sleep 3600 >/dev/null
+          docker start npbuild >/dev/null
+          # 源码只读挂入、容器内复制一份：容器里的 root/builder 碰不到宿主文件
+          docker exec npbuild sh -c 'mkdir -p /build && cp -a /src/. /build/' 2>&1 | tee logs/01-copy.log
+
+      - name: 装构建依赖（${{ matrix.fmt.name }}-${{ matrix.arch.name }}）
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$DEPS" > deps.sh
+          docker cp deps.sh npbuild:/deps.sh
+          docker exec npbuild sh /deps.sh 2>&1 | tee logs/02-deps.log
+        env:
+          DEPS: ${{ matrix.deps }}
+
+      - name: 编译并出包（${{ matrix.fmt.name }}-${{ matrix.arch.name }}）
+        run: |
+          set -o pipefail
+          docker exec -w /build npbuild bash -c "$BUILD" 2>&1 | tee logs/03-build.log
+        env:
+          BUILD: ${{ matrix.build }}
+
+      - name: 收集产物（${{ matrix.fmt.name }}-${{ matrix.arch.name }}）
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          docker cp npbuild:/build/dist/. dist/
+          ls -l dist
+
+      - name: 容器日志（${{ matrix.fmt.name }}-${{ matrix.arch.name }}）
+        if: always()
+        run: |
+          docker logs npbuild > logs/04-docker.log 2>&1 || true
+          # 出包失败时把容器内日志整段贴到 Actions 输出里：公开仓库的日志
+          # 无需 token 即可阅读，省掉「下载 artifact 才能复盘」这一步。
+          if true; then
+            echo "=== 出包日志（${{ matrix.fmt.name }}-${{ matrix.arch.name }}）==="
+            for f in logs/*.log; do
+              [ -f "$f" ] || continue
+              echo "--- $f ---"
+              tail -n 120 "$f"
+            done
+          fi
+
+      - name: 保存日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.fmt.name }}-${{ matrix.arch.name }}
+          path: logs/
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.fmt.name }}-${{ matrix.arch.name }}
+          path: dist/
+          if-no-files-found: error
+
+  # 出包成功不等于装得上。这里在每个目标发行版里真装同一个通用包再跑 --version：
+  # 那份 deb 要装到 Ubuntu 22.04 与 Debian 12/13 上，那份 rpm 要装到 RHEL 9、
+  # Fedora、openSUSE Leap 16 与 Tumbleweed 上——「一份包通用」这句话由这一步来证，
+  # glibc / 宏差异没兜住的话会以 "GLIBC_2.xx not found" 或依赖冲突直接红。
+  install-check:
+    name: 安装验证 (${{ matrix.distro.name }} / ${{ matrix.arch.name }})
+    needs: [package]
+    runs-on: ${{ matrix.arch.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - { name: x86_64,  runner: ubuntu-latest }
+          - { name: aarch64, runner: ubuntu-24.04-arm }
+        distro:
+          - { name: debian-12,     image: debian:12,                  pkg: deb,    pick: '\.deb$' }
+          - { name: ubuntu-22.04,  image: ubuntu:22.04,               pkg: deb,    pick: '\.deb$' }
+          - { name: ubuntu-24.04,  image: ubuntu:24.04,               pkg: deb,    pick: '\.deb$' }
+          - { name: debian-trixie, image: debian:trixie,              pkg: deb,    pick: '\.deb$' }
+          - { name: almalinux-9,   image: almalinux:9,                pkg: rpm,    pick: '\.rpm$' }
+          - { name: fedora,        image: fedora:latest,              pkg: rpm,    pick: '\.rpm$' }
+          - { name: opensuse-leap, image: opensuse/leap:16.0,         pkg: rpm,    pick: '\.rpm$' }
+          - { name: opensuse-tw,   image: opensuse/tumbleweed:latest, pkg: rpm,    pick: '\.rpm$' }
+          - { name: arch,          image: archlinux:latest,           pkg: arch,   pick: 'numdeck-[0-9].*pkg\.tar\.zst$' }
+          - { name: alpine,        image: alpine:latest,              pkg: alpine, pick: 'numdeck-[0-9].*apk$' }
+        # 这几家在 aarch64 上没有可用的官方容器镜像，装不了也就验不了：
+        # Arch Linux ARM 是独立生态；openSUSE 的官方镜像没有 aarch64 变体。
+        # 它们的 arm64 支持不在 CI 里承诺，README 也不写。
+        exclude:
+          - arch: { name: aarch64 }
+            distro: { name: arch }
+          - arch: { name: aarch64 }
+            distro: { name: opensuse-leap }
+          - arch: { name: aarch64 }
+            distro: { name: opensuse-tw }
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkg-${{ matrix.distro.pkg }}-${{ matrix.arch.name }}
+          path: dist
+
+      - name: 装包并执行（${{ matrix.distro.name }} / ${{ matrix.arch.name }}）
+        run: |
+          set -o pipefail
+          if ! docker run --rm -v "$PWD/dist:/dist:ro" "${{ matrix.distro.image }}" sh -c '
+            set -eux
+            cd /dist
+            pkg=$(ls | grep -E "${{ matrix.distro.pick }}" | head -n 1)
+            echo "待装包: $pkg"
+            case "$pkg" in
+              *.deb)
+                export DEBIAN_FRONTEND=noninteractive
+                apt-get update -qq
+                apt-get install -y -qq --no-install-recommends "./$pkg"
+                ;;
+              *.rpm)
+                if command -v dnf >/dev/null 2>&1; then
+                  dnf install -y --nogpgcheck "./$pkg"
+                else
+                  # openSUSE 上不走 zypper：它装本地包前会先 refresh 全部软件源，
+                  # 容器里常常卡在这一步。rpm 直接装本地包，依赖照样校验。
+                  rpm -Uvh --nosignature --replacepkgs "./$pkg"
+                fi
+                ;;
+              *.pkg.tar.*)
+                pacman -Sy --noconfirm --needed glibc >/dev/null 2>&1 || true
+                pacman -U --noconfirm "./$pkg"
+                ;;
+              *.apk)
+                apk add --no-cache --allow-untrusted "./$pkg"
+                ;;
+            esac
+            echo "--- 版本 ---"
+            numdeck --version
+            echo "--- 命令可用 ---"
+            numdeck --help >/dev/null
+            echo "--- udev 规则已落地 ---"
+            # 不用 find：openSUSE 的精简镜像里连 find 都没有
+            hit=0
+            for d in /usr/lib/udev/rules.d /lib/udev/rules.d /usr/local/lib/udev/rules.d; do
+              if [ -f "$d/99-numdeck.rules" ]; then echo "规则: $d/99-numdeck.rules"; hit=1; fi
+            done
+            [ "$hit" = 1 ]
+            echo "OK: 装得上、跑得起来"
+          ' 2>&1 | tee /tmp/install.log; then
+            # 失败时把原因打成 annotation：公开仓库不用登录也能看到
+            grep -aE "错误|失败|Error|error|failed|not found|No such|denied|conflict|依赖" /tmp/install.log \
+              | tail -n 15 | cut -c1-800 | while IFS= read -r line; do
+                echo "::error::[${{ matrix.distro.name }} / ${{ matrix.arch.name }}] $line"
+              done
+            echo "---- tail ----"
+            tail -n 40 /tmp/install.log | cut -c1-800 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            exit 1
+          fi
+
+  # AUR：PKGBUILD 拉 GitHub 的 tag tarball 现场编译，所以「能不能装」只有
+  # 真编真装才算数——这里在 Arch 容器里 makepkg 编一遍、pacman -U 装上、
+  # 跑 --version，顺便让 makepkg 生成 .SRCINFO（这文件只能它生成）。
+  aur:
+    needs: [package]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 计算版本
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            V="${{ github.event.inputs.version }}"
+          else
+            V="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "版本 $V"
+
+      # 用提交者身份当 Maintainer 行，AUR 会校验这一行不能是占位符
+      - name: 渲染 PKGBUILD
+        env:
+          V: ${{ steps.ver.outputs.version }}
+          AUR_MAINTAINER: >-
+            ${{ github.event.head_commit.author.name || 'RunningVAN' }}
+            <${{ github.event.head_commit.author.email || 'runningvan@users.noreply.github.com' }}>
+        run: bash ./packaging/aur/gen-aur.sh --version "$V" --out auraur
+
+      - name: Arch 容器内 makepkg 真编 + 真装
+        run: |
+          set -o pipefail
+          if ! docker run --rm -v "$PWD:/work" -w /work archlinux:latest bash -c '
+            set -eux
+            pacman -Syu --noconfirm --needed base-devel rust sudo
+            id builder >/dev/null 2>&1 || useradd -m builder
+            echo "builder ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/builder
+            chmod 0440 /etc/sudoers.d/builder
+            chown -R builder:builder /work/auraur
+            # makepkg 不允许 root 跑；--syncdeps 会按 makedepends 自己装依赖
+            su builder -c "cd /work/auraur && makepkg -f --noconfirm --syncdeps"
+            su builder -c "cd /work/auraur && makepkg --printsrcinfo > .SRCINFO"
+            echo "--- 产物 ---"
+            ls -la /work/auraur
+            pkg=$(ls /work/auraur/*.pkg.tar.zst | head -n 1)
+            echo "待装包: $pkg"
+            pacman -U --noconfirm "$pkg"
+            echo "--- 版本 ---"
+            numdeck --version
+            numdeck --help >/dev/null
+            echo "--- udev 规则已落地 ---"
+            test -f /usr/lib/udev/rules.d/99-numdeck.rules
+            echo "--- systemd 单元已落地 ---"
+            test -f /usr/lib/systemd/system/numdeck.service
+            # post_install 里的备份配置要真被写出来，否则 backup= 声明是空的
+            test -f /etc/numdeck/numdeck.json
+            echo "OK: AUR 包编得出、装得上、跑得起来"
+          ' 2>&1 | tee /tmp/aur.log; then
+            grep -aE "错误|失败|Error|error|failed|not found|No such|denied|conflict" /tmp/aur.log               | tail -n 15 | cut -c1-800 | while IFS= read -r line; do
+                echo "::error::[aur] $line"
+              done
+            tail -n 40 /tmp/aur.log | cut -c1-800 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            exit 1
+          fi
+
+      - name: 校验 .SRCINFO 与 PKGBUILD 一致
+        run: |
+          set -euo pipefail
+          test -f auraur/.SRCINFO || { echo "::error::没有 .SRCINFO"; exit 1; }
+          # makepkg --printsrcinfo 的字段行带前导 tab，别写成 ^pkgver
+          V='${{ steps.ver.outputs.version }}'
+          grep -qE "^[[:space:]]*pkgname = numdeck$" auraur/.SRCINFO \
+            || { echo "::error::pkgname 不对"; grep -E "pkgname" auraur/.SRCINFO; exit 1; }
+          grep -qE "^[[:space:]]*pkgver = ${V}$" auraur/.SRCINFO \
+            || { echo "::error::pkgver 不是 ${V}"; grep -E "pkgver" auraur/.SRCINFO; exit 1; }
+          # AUR 拒收 pkgver 里带 - 的包，这里提前拦
+          ! grep -qE "^[[:space:]]*pkgver = .*-" auraur/.SRCINFO
+          echo "--- .SRCINFO ---"
+          cat auraur/.SRCINFO
+
+      - name: 保存日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aur-log
+          path: /tmp/aur.log
+          if-no-files-found: ignore
+
+      # 只传 PKGBUILD 与 .SRCINFO：AUR 编出来的 pkg.tar.zst 不能混进
+      # 仓库产物（它会以 numdeck 的包名进 pacman 源，和原生包打架）
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aur-src
+          path: |
+            auraur/PKGBUILD
+            auraur/.SRCINFO
+            auraur/numdeck.install
+          include-hidden-files: true
+          if-no-files-found: error
+
+  # Actions 日志在没有 token 的情况下读不到，把出包日志推回一个分支才能复盘。
+  diagnose:
+    needs: [package]
+    if: always()
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: logs-*
+          path: logs
+      # 不能 merge-multiple：每个 matrix 的日志文件名都一样（01-copy.log…），
+      # 合并后只会剩下最后写进去的那份，复盘时就变成拿着 fedora 的日志查 arch 的错。
+      - name: 汇总
+        run: |
+          set -euo pipefail
+          mkdir -p ci-logs
+          cp -a logs/. ci-logs/ 2>/dev/null || true
+          find ci-logs -type f | sort
+      - name: 推到 ci-logs 分支
+        run: |
+          set -euo pipefail
+          # 日志目录空时直接退出：否则 orphan 分支上的空提交会把上一次的日志冲掉
+          if [ ! -d ci-logs ] || [ -z "$(find ci-logs -type f -print -quit)" ]; then
+            echo "没有日志可推，保持 ci-logs 分支不动"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan ci-logs-tmp
+          git add -A ci-logs
+          git commit -m "ci: 出包日志 ${{ github.run_id }}" || echo "无日志"
+          git push -f origin HEAD:ci-logs
+
+  # 静态 tarball 单独出：musl 目标在宿主上比在容器里好搞
+  tarball:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          # musl 静态包必须由对应架构的 musl-gcc 来链：amd64 runner 上没有
+          # aarch64 的 musl 工具链，所以 ARM64 那份交给原生 arm runner 编。
+          - { name: x86_64,  runner: ubuntu-latest,    triple: x86_64-unknown-linux-musl }
+          - { name: aarch64, runner: ubuntu-24.04-arm, triple: aarch64-unknown-linux-musl }
+    runs-on: ${{ matrix.arch.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.arch.triple }}
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+      - name: 出静态 tarball（${{ matrix.arch.name }}）
+        run: ./packaging/tarball/make-tarball.sh --static --arch ${{ matrix.arch.name }} --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkg-tarball-${{ matrix.arch.name }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  # 汇总：生成四套仓库索引 → 发 Release → 提交 repo/ 回 main
+  publish:
+    needs: [package, tarball, install-check, aur]
+    if: needs.package.result == 'success' && needs.tarball.result == 'success' && needs.install-check.result == 'success' && needs.aur.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      # 两个私钥都从 Secrets 取。没配就跳过签名，仓库照样发，只是安装命令退回
+      # trusted=yes / gpgcheck=0 / --allow-untrusted，不至于因为缺密钥卡死发版。
+      REPO_GPG_PRIVATE_KEY: ${{ secrets.REPO_GPG_PRIVATE_KEY }}
+      REPO_APK_PRIVATE_KEY: ${{ secrets.REPO_APK_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 只汇总出包产物。不加 pattern 会把 logs-* 与 AUR 源码一起拉进 dist，
+      # 后面 mv dist/* 连日志目录都会塞进 Release。
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pkg-*
+          path: dist
+          merge-multiple: true
+
+      # AUR 的 PKGBUILD / .SRCINFO 也随 Release 发布：不想等 AUR 审核的人
+      # 可以直接下这两个文件 makepkg -si。
+      - uses: actions/download-artifact@v4
+        with:
+          name: aur-src
+          path: aurart
+
+      - name: 计算版本
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            V="${{ github.event.inputs.version }}"
+          else
+            V="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "版本 $V"
+          ls -l dist
+
+      # 现在 deb / rpm 各只有一份通用包，不再需要从多份里挑基线。
+      # 这里做「恰好一份」的硬校验：日后谁往 matrix 里加回发行版专用包，
+      # 会在发版前红掉，而不是让软件源里混进某个随机发行版编出来的包。
+      - name: 归集产物并校验唯一性
+        run: |
+          set -euo pipefail
+          mkdir -p pkg
+          shopt -s nullglob
+          # 每个架构各一份通用包：x86_64 与 ARM64。多一份少一份都不发版，
+          # 否则软件源里会混进凭空出现或缺失的架构。
+          for pair in amd64:deb arm64:deb x86_64:rpm aarch64:rpm; do
+            a="${pair%%:*}"; ext="${pair##*:}"
+            set +e
+            n=$(compgen -G "dist/*_${a}.${ext}" | wc -l | tr -d ' ')
+            set -e
+            if [ "$n" -ne 1 ]; then
+              echo "dist 里的 ${ext}（${a}）：$(compgen -G "dist/*${a}*" || echo 无)"
+              echo "::error::${ext} 的 ${a} 包应恰好 1 个，实际 ${n} 个"
+              exit 1
+            fi
+          done
+          mv dist/* pkg/
+          # AUR 三件套。注意 .SRCINFO 是隐藏文件，通配符 * 匹配不到，
+          # 用 cp -a <dir>/. 整体搬；numdeck.install 是 PKGBUILD 里
+          # install= 指向的文件，缺了用户一端 makepkg 会直接报找不到。
+          for d in aurart/auraur aurart; do
+            if [ -d "$d" ]; then
+              cp -a "$d/." pkg/
+              break
+            fi
+          done
+          for f in PKGBUILD .SRCINFO numdeck.install; do
+            if [ ! -f "pkg/$f" ]; then
+              echo "::error::AUR 产物缺 $f"
+              exit 1
+            fi
+          done
+          # GitHub 不收以 . 开头的资产名，.SRCINFO 会被存成 default.SRCINFO。
+          # 另存一份正常名字随 Release 发布；makepkg 本身只用 PKGBUILD + .install。
+          cp pkg/.SRCINFO pkg/numdeck.SRCINFO
+          echo "待发产物："
+          ls -1a pkg
+
+      - name: 装索引工具
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            dpkg-dev createrepo-c ca-certificates gnupg rpm
+
+      # 私钥只在这个 job 的内存与 $RUNNER_TEMP 里存在，不落 artifacts、不进 git。
+      - name: 导入签名私钥
+        if: env.REPO_GPG_PRIVATE_KEY != '' || env.REPO_APK_PRIVATE_KEY != ''
+        run: |
+          set -euo pipefail
+          sign_args=""
+          if [ -n "${REPO_GPG_PRIVATE_KEY:-}" ]; then
+            export GNUPGHOME="${RUNNER_TEMP:-$PWD}/gnupg"
+            mkdir -p "$GNUPGHOME"; chmod 700 "$GNUPGHOME"
+            printf '%s\n' "$REPO_GPG_PRIVATE_KEY" | gpg --batch --quiet --import
+            fpr="$(gpg --batch --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')"
+            [ -n "$fpr" ] || { echo "::error::GPG 私钥导入后取不到指纹"; exit 1; }
+            echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+            echo "GPG_KEY_ID=$fpr"     >> "$GITHUB_ENV"
+            echo "导入了 GPG 私钥：$fpr"
+            sign_args="$sign_args --gpg-key $fpr"
+          fi
+          if [ -n "${REPO_APK_PRIVATE_KEY:-}" ]; then
+            kdir="${RUNNER_TEMP:-$PWD}/keys-private"; mkdir -p "$kdir"
+            # 文件名不能改：apk 认的是签名成员 .SIGN.RSA.<私钥文件名>.pub，
+            # 用户端 /etc/apk/keys 里的公钥必须同名才校验得过
+            printf '%s\n' "$REPO_APK_PRIVATE_KEY" > "$kdir/numdeck-apk.rsa"
+            chmod 600 "$kdir/numdeck-apk.rsa"
+            echo "导入了 apk 私钥"
+            sign_args="$sign_args --apk-key $kdir/numdeck-apk.rsa"
+          fi
+          echo "SIGN_ARGS=$sign_args" >> "$GITHUB_ENV"
+
+      # repo-add / apk 是 Arch 与 Alpine 专属工具，临时借容器跑，
+      # 免得为了两条索引命令把整个 job 搬进容器
+      - name: 借容器提供 repo-add 与 apk
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/shim"
+          cat > "$HOME/shim/repo-add" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec docker run --rm -v "$PWD:/w" -w /w archlinux:latest \
+            bash -c 'pacman -Sy --noconfirm --needed pacman-contrib >/dev/null 2>&1; repo-add "$@"' _ "$@"
+          SH
+          cat > "$HOME/shim/apk" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          exec docker run --rm -v "$PWD:/w" -w /w alpine:latest apk "$@"
+          SH
+          # abuild-sign 只有 Alpine 有（apk 的签名格式就它认），借容器跑。
+          # 私钥与待签文件都得先进 $PWD 再挂载：容器里看不到宿主机别的路径，
+          # 而且私钥文件名决定签名成员名（.SIGN.RSA.<名字>.pub），不能改。
+          cat > "$HOME/shim/abuild-sign" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          key=""; files=()
+          while [ $# -gt 0 ]; do
+            case "$1" in
+              -k) key="$2"; shift 2 ;;
+              *)  files+=("$1"); shift ;;
+            esac
+          done
+          kbase="$(basename "$key")"
+          # 私钥名 = 签名成员名（.SIGN.RSA.<名字>.pub），用户端公钥要同名才认。
+          # 待签文件可能在任意位置（staging 目录），统一搬进 $PWD 再挂给容器，
+          # 签完拷回去——只依赖文件内容，不依赖宿主机路径在容器里可见。
+          kdir="$PWD/.apk-sign-key"
+          wdir="$PWD/.apk-sign-work"
+          mkdir -p "$kdir" "$wdir"
+          cp -f "$key" "$kdir/$kbase"
+          args=(-k "/w/.apk-sign-key/$kbase")
+          for f in "${files[@]}"; do
+            cp -f "$f" "$wdir/${f##*/}"
+            args+=("/w/.apk-sign-work/${f##*/}")
+          done
+          docker run --rm -v "$PWD:/w" -w /w alpine:latest \
+            sh -c 'apk add --no-cache abuild >/dev/null 2>&1; abuild-sign "$@"' _ "${args[@]}"
+          for f in "${files[@]}"; do cp -f "$wdir/${f##*/}" "$f"; done
+          SH
+          chmod +x "$HOME/shim/repo-add" "$HOME/shim/apk" "$HOME/shim/abuild-sign"
+          printf '%s\n' "$HOME/shim" >> "$GITHUB_PATH"
+
+      - name: 校验产物齐全（缺任何一类就不发版）
+        run: |
+          set -euo pipefail
+          missing=0
+          check() { # $1 名字  $2 匹配式
+            if compgen -G "pkg/$2" >/dev/null; then
+              echo "OK   $1: $(compgen -G "pkg/$2" | wc -l | tr -d ' ') 个"
+            else
+              echo "MISS $1（pkg/$2）"
+              missing=1
+            fi
+          }
+          check deb      '*.deb'
+          check rpm      '*.rpm'
+          check arch     '*.pkg.tar.*'
+          check apk      '*.apk'
+          check tar      '*.tar.gz'
+          # 架构维度单独确认：少了 ARM64 的包同样算产物不全。
+          # pacman 仓库只要 x86_64（Arch Linux ARM 是独立生态，见 package job）。
+          check deb-x86   'numdeck_*_amd64.deb'
+          check deb-arm   'numdeck_*_arm64.deb'
+          check rpm-x86   'numdeck-*.x86_64.rpm'
+          check rpm-arm   'numdeck-*.aarch64.rpm'
+          check apk-x86   'numdeck-*-x86_64.apk'
+          check apk-arm   'numdeck-*-aarch64.apk'
+          check tar-x86   'numdeck-*-x86_64.tar.gz'
+          check tar-arm   'numdeck-*-aarch64.tar.gz'
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::产物不全，不发版（先看 ci-logs 分支里的出包日志）"
+            exit 1
+          fi
+
+      - name: 生成仓库
+        run: |
+          set -o pipefail
+          # 失败时把最后几十行打成 annotation，公开可查，不必登录看日志
+          # shellcheck disable=SC2086  # SIGN_ARGS 就是故意分词展开的
+          if ! bash -x ./tools/repo-gen.sh --dist pkg --out repo --keep 3 ${SIGN_ARGS:-} 2>&1 | tee /tmp/repo-gen.log; then
+            echo "::error::repo-gen.sh 失败，关键行与尾部输出如下"
+            { grep -aE "错误|失败|unrecognized|not found|No such|denied|fatal|invalid" /tmp/repo-gen.log | tail -n 20
+              echo "---- tail ----"
+              tail -n 60 /tmp/repo-gen.log
+            } | cut -c1-900 | while IFS= read -r line; do
+              echo "::error::RG| $line"
+            done
+            exit 1
+          fi
+
+      - name: 校验索引没丢东西
+        run: |
+          set -e
+          ls -l repo
+          test -f repo/apt/dists/stable/Release
+          # rpm 与 alpine 各查两个架构；pacman 只出 x86_64（Arch Linux ARM 是独立生态）
+          for a in x86_64 aarch64; do
+            test -f "repo/rpm/$a/repodata/repomd.xml" \
+              || { echo "::error::缺 rpm/$a 的 repomd.xml"; exit 1; }
+            test -f "repo/alpine/$a/APKINDEX.tar.gz" \
+              || { echo "::error::缺 alpine/$a 的 APKINDEX.tar.gz"; exit 1; }
+          done
+          test -f repo/arch/x86_64/numdeck.db.tar.gz
+          # 索引文件在、里面却是空的或只有 debug 包，pacman 端就是 target not found。
+          # prune 误删正式包时在这里就红，不必等冒烟。
+          tar tzf repo/arch/x86_64/numdeck.db.tar.gz | grep -qE '^numdeck-[0-9]' \
+            || { echo "::error::pacman 索引里没有 numdeck 正式包"; exit 1; }
+          test -f repo/arch/x86_64/numdeck.db.sig \
+            || echo "提示: 未生成 numdeck.db.sig（未签名仓库可忽略）"
+          # 签名开着就必须四类签名产物全在：缺哪个，哪个生态的用户就会被
+          # 「Release 未签名 / repomd 未签名 / db 未签名 / APKINDEX 未签名」挡住
+          if [ -n "${SIGN_ARGS:-}" ]; then
+            signed=(
+              repo/keys/numdeck-repo.asc
+              repo/keys/numdeck-repo.gpg
+              repo/apt/dists/stable/InRelease
+              repo/apt/dists/stable/Release.gpg
+              repo/arch/x86_64/numdeck.db.tar.gz.sig
+            )
+            for a in x86_64 aarch64; do
+              signed+=("repo/rpm/$a/repodata/repomd.xml.asc")
+            done
+            for f in "${signed[@]}"; do
+              test -f "$f" || { echo "::error::缺签名产物 $f"; exit 1; }
+            done
+            # apk 的签名是塞进 tar 里的成员，没有独立文件，只能翻索引内容
+            for a in x86_64 aarch64; do
+              tar tzf "repo/alpine/$a/APKINDEX.tar.gz" | grep -q '^\.SIGN\.RSA\.' \
+                || { echo "::error::alpine/$a 的 APKINDEX.tar.gz 里没有签名成员"; exit 1; }
+            done
+            echo "签名产物齐全"
+          else
+            echo "未配置签名密钥，跳过签名产物检查"
+          fi
+
+      # 只把包装上还不够：这里照 index.html 给用户的命令原样走一遍，并且全程
+      # 开着严格校验（signed-by / gpgcheck / Required / 不带 --allow-untrusted）。
+      # 密钥没配对、公钥没随仓库发，都会在这一步红掉，而不是等用户装的时候才发现。
+      - name: 签名源冒烟（照抄官网命令）
+        if: env.SIGN_ARGS != ''
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8099 --bind 127.0.0.1 --directory repo >/dev/null 2>&1 &
+          SRV=$!
+          trap 'kill $SRV 2>/dev/null || true' EXIT
+          for _ in $(seq 1 40); do
+            curl -fsS http://127.0.0.1:8099/keys/numdeck-repo.asc >/dev/null 2>&1 && break
+            sleep 0.25
+          done
+          fail=0
+          # 容器内脚本一律用 quoted heredoc 从 stdin 喂给 bash -s。早先是把脚本当成
+          # 单引号参数传进去，可段内又有 printf '...'，外层单引号被提前闭合，于是
+          # $basearch / $arch 这类本该由容器内解释的变量被 runner 展开，set -u 直接
+          # 报 unbound variable，dnf/pacman/apk 三段压根没跑。
+          smoke() { # $1 名字  $2 镜像  $3 容器内 shell（默认 bash，alpine 只有 sh）；脚本从 stdin 读
+            local name="$1" img="$2" shbin="${3:-bash}"
+            echo "===== $name ====="
+            if ! docker run --rm -i --network host \
+                 -v "$PWD/repo:/repo:ro" \
+                 -e BASE=http://127.0.0.1:8099 -e FPR="$GPG_KEY_ID" \
+                 "$img" "$shbin" -s > "/tmp/smoke-$name.log" 2>&1; then
+              fail=1
+              echo "---- $name 失败 ----"
+              tail -n 30 "/tmp/smoke-$name.log"
+            else
+              tail -n 3 "/tmp/smoke-$name.log"
+            fi
+          }
+
+          smoke apt debian:12 <<'APT'
+          set -eux
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends ca-certificates curl gnupg >/dev/null
+          install -d -m 0755 /usr/share/keyrings
+          curl -fsSL "$BASE/keys/numdeck-repo.gpg" -o /usr/share/keyrings/numdeck.gpg
+          echo "deb [signed-by=/usr/share/keyrings/numdeck.gpg] $BASE/apt stable main" \
+            > /etc/apt/sources.list.d/numdeck.list
+          apt-get update -qq
+          apt-get install -y -qq numdeck
+          numdeck --version
+          APT
+
+          smoke dnf almalinux:9 <<'DNF'
+          set -eux
+          rpm --import "$BASE/keys/numdeck-repo.asc"
+          printf '[numdeck]\nname=numdeck\nbaseurl=%s/rpm/$basearch\nenabled=1\ngpgcheck=1\nrepo_gpgcheck=1\ngpgkey=%s/keys/numdeck-repo.asc\n' \
+            "$BASE" "$BASE" > /etc/yum.repos.d/numdeck.repo
+          dnf install -y numdeck
+          numdeck --version
+          DNF
+
+          smoke pacman archlinux:latest <<'PACMAN'
+          set -eux
+          pacman-key --init
+          curl -fsSL "$BASE/keys/numdeck-repo.asc" -o /tmp/numdeck.asc
+          pacman-key --add /tmp/numdeck.asc >/dev/null
+          pacman-key --lsign-key "$FPR"
+          printf '\n[numdeck]\nSigLevel = Required DatabaseRequired\nServer = %s/arch/x86_64\n' "$BASE" \
+            >> /etc/pacman.conf
+          pacman -Sy --noconfirm numdeck
+          numdeck --version
+          PACMAN
+
+          smoke apk alpine:latest sh <<'APK'
+          set -eux
+          wget -qO /etc/apk/keys/numdeck-apk.rsa.pub "$BASE/keys/numdeck-apk.rsa.pub"
+          # apk 自己会拼 <arch>，这里只给到 /alpine，多写一层就变成 /alpine/x86_64/x86_64
+          echo "$BASE/alpine" >> /etc/apk/repositories
+          apk update
+          apk add numdeck
+          numdeck --version
+          APK
+
+          # install.sh 是把上面三段合起来的那条命令，必须自己也跑通：
+          # 挂载 repo/ 进容器，用本地 http 服务当上游，走完整流程（导入公钥 → 写源 → 安装）。
+          smoke install-sh-deb debian:12 <<'INSTDEB'
+          set -eux
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends ca-certificates curl >/dev/null
+          NUMDECK_BASE="$BASE" sh /repo/install.sh
+          INSTDEB
+
+          smoke install-sh-rpm almalinux:9 <<'INSTRPM'
+          set -eux
+          NUMDECK_BASE="$BASE" sh /repo/install.sh
+          INSTRPM
+
+          smoke install-sh-apk alpine:latest sh <<'INSTAPK'
+          set -eu
+          NUMDECK_BASE="$BASE" sh /repo/install.sh
+          INSTAPK
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::签名源冒烟失败：四个生态里至少一个装不上，别发版"
+            exit 1
+          fi
+          echo "四个生态都能照命令装上了"
+
+      - name: 生成校验和
+        run: |
+          ( cd pkg && sha256sum ./* 2>/dev/null ) \
+              | grep -v SHA256SUMS > "pkg/numdeck-${{ steps.ver.outputs.version }}-SHA256SUMS" || true
+          cat "pkg/numdeck-${{ steps.ver.outputs.version }}-SHA256SUMS"
+
+      - name: 发 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          # Release 说明只写本版要点：优先用 docs/release-notes/<版本>.md（手写一两句），
+          # 没写就退回 CHANGELOG 本版的小节标题。整份 CHANGELOG 上万字，绝不整份塞进 Release。
+          NOTES="$RUNNER_TEMP/notes.md"
+          if [ -f "docs/release-notes/$V.md" ]; then
+            cp "docs/release-notes/$V.md" "$NOTES"
+          elif [ -f CHANGELOG.md ]; then
+            bash tools/release-notes.sh "$V" "$NOTES"
+          else
+            echo "完整变更见 CHANGELOG。" > "$NOTES"
+          fi
+          cat "$NOTES"
+          if gh release view "v$V" >/dev/null 2>&1; then
+            gh release delete-asset "v$V" default.SRCINFO -y >/dev/null 2>&1 || true
+            gh release upload "v$V" pkg/* --clobber
+            # 重打 tag 时旧 Release 会失去 tag 关联、退化成草稿（网页上看不到），
+            # 这里强制把它绑回当前 tag 并置为已发布；说明也随之一并刷新。
+            gh release edit "v$V" --tag "v$V" --draft=false --notes-file "$NOTES"
+          else
+            gh release create "v$V" pkg/* --title "numdeck $V" \
+              --notes-file "$NOTES" --target main
+          fi
+
+      - name: 把 repo/ 提交回 main
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A repo
+          if git diff --cached --quiet; then
+            echo "repo/ 无变化"
+          else
+            git commit -m "chore(repo): 更新软件源索引至 ${{ steps.ver.outputs.version }}"
+            # 这个 job 跑的是 tag 指向的提交，而不是 main 的最新提交。发版之后
+            # 只要往 main 推过文档或站点改动，HEAD 就不是 main 的后代，直接
+            # push 会因非快进被拒，索引发不出去、安装命令指向旧包。先落回
+            # main 再推；真冲突就让这一步红，别带着旧索引把 Release 当成成功。
+            git fetch --quiet origin main
+            if ! git rebase --quiet origin/main; then
+              echo "::error::repo/ 索引无法 rebase 到 main，请手工处理"
+              exit 1
+            fi
+            git push origin HEAD:main
+          fi

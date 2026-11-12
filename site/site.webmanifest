@@ -1,0 +1,17 @@
+{
+  "name": "numdeck — NumberPad on Linux",
+  "short_name": "numdeck",
+  "description": "Userspace driver for the ASUS NumberPad touchpad numpad. Stock kernel, stock ACPI.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "browser",
+  "background_color": "#0a0b0f",
+  "theme_color": "#0a0b0f",
+  "lang": "en",
+  "icons": [
+    { "src": "assets/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "assets/favicon-32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "assets/favicon-16.png", "sizes": "16x16", "type": "image/png" },
+    { "src": "assets/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

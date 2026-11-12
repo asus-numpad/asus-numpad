@@ -1,0 +1,36 @@
+#!/bin/sh
+# dpkg postinst：刷新 udev、按需启用服务。
+# 这里刻意不用 `deb-systemd-helper` 之外的重型依赖 —— 目标系统若没跑 systemd
+# （比如容器/chroot），装了也不该报错，所以每步都容错。
+set -e
+
+case "$1" in
+    configure)
+        if command -v udevadm >/dev/null 2>&1; then
+            udevadm control --reload-rules >/dev/null 2>&1 || true
+            udevadm trigger --subsystem-match=input --action=change >/dev/null 2>&1 || true
+            udevadm trigger --subsystem-match=misc --action=change >/dev/null 2>&1 || true
+        fi
+
+        if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+            systemctl daemon-reload >/dev/null 2>&1 || true
+            # 只在真机上启用；没有 ASUS 触摸板时服务自身会因 Condition 立即退出，
+            # 不会留下一个反复重启的单元
+            systemctl enable numdeck.service >/dev/null 2>&1 || true
+            systemctl restart numdeck.service >/dev/null 2>&1 || true
+        fi
+
+        cat <<'EOF'
+
+numdeck 已安装。常用操作:
+  · 切换数字小键盘：触摸板右上角图标区短按（默认 sync 会跟随系统 NumLock）
+  · systemctl status numdeck     查看状态
+  · journalctl -u numdeck -f     实时日志
+  · numdeck check                自检设备/几何/背光通道
+  · 配置文件：/etc/numdeck/numdeck.json
+
+EOF
+        ;;
+esac
+
+exit 0

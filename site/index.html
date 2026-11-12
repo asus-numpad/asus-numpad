@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>numdeck — NumberPad on Linux</title>
+<meta name="description" content="Linux userspace driver for the ASUS NumberPad. No kernel module replaced, no ACPI patched. One package per ecosystem; the x86_64 build detects the model at runtime, the ARM64 build runs a custom layout.">
+<link rel="canonical" href="https://numdeck-dev.github.io/">
+<meta name="theme-color" content="#0a0b0f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)">
+
+<!-- brand: icons -->
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="assets/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png" sizes="180x180">
+<link rel="manifest" href="site.webmanifest">
+
+<!-- brand: social cards -->
+<meta property="og:site_name" content="numdeck">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://numdeck-dev.github.io/">
+<meta property="og:title" content="numdeck — NumberPad on Linux">
+<meta property="og:description" content="Userspace driver for the ASUS NumberPad touchpad numpad. One package, any distro, no kernel patch.">
+<meta property="og:image" content="https://numdeck-dev.github.io/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:alt" content="numdeck — the ASUS NumberPad, native on Linux">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:locale:alternate" content="zh_TW">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="numdeck — NumberPad on Linux">
+<meta name="twitter:description" content="Stock kernel, stock ACPI. The ASUS NumberPad driven entirely from userspace.">
+<meta name="twitter:image" content="https://numdeck-dev.github.io/assets/og.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "numdeck",
+  "alternateName": "ASUS NumberPad Linux driver",
+  "applicationCategory": "UtilitiesApplication",
+  "applicationSubCategory": "Driver",
+  "operatingSystem": "Linux",
+  "url": "https://numdeck-dev.github.io/",
+  "sameAs": "https://github.com/numdeck-dev/numdeck",
+  "codeRepository": "https://github.com/numdeck-dev/numdeck",
+  "downloadUrl": "https://github.com/numdeck-dev/numdeck/releases",
+  "softwareVersion": "1.0.3",
+  "license": "https://spdx.org/licenses/GPL-3.0-or-later.html",
+  "inLanguage": ["en", "zh-Hans", "zh-Hant"],
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "description": "Userspace driver for the ASUS NumberPad touchpad numpad. Reads contacts through evdev, emits keys through uinput, requires no kernel module and no ACPI change."
+}
+</script>
+<script>document.documentElement.classList.add('js')</script>
+<script>
+    /* 首帧前定主题：手动选过就用手动值，没选过跟随系统 */
+    (function () {
+      var saved = null;
+      try { saved = localStorage.getItem("an-theme"); } catch (e) {}
+      if (saved !== "light" && saved !== "dark") {
+        saved = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      document.documentElement.setAttribute("data-theme", saved);
+    })();
+  </script>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<a class="skip-link" href="#top" data-i18n="a11y.skip">Skip to content</a>
+
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top">
+      <span class="brand-mark" aria-hidden="true">
+        <img src="assets/logo.svg" alt="" width="26" height="26" decoding="async">
+      </span>
+      <span class="brand-name">numdeck</span>
+      <span class="brand-tag">1.0.3</span>
+    </a>
+    <nav class="nav-links" aria-label="Main" data-i18n-aria="a11y.nav">
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#how" data-i18n="nav.how">How it works</a>
+      <a href="#models" data-i18n="nav.models">Models</a>
+      <a href="#usage" data-i18n="nav.usage">Commands</a>
+      <a href="#install" data-i18n="nav.install">Install</a>
+      <a href="#faq" data-i18n="nav.faq">FAQ</a>
+    </nav>
+    <div class="nav-actions">
+      <div class="lang-picker">
+        <svg class="lang-ic" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3.2 9.3h17.6M3.2 14.7h17.6M12 3.1a18.5 18.5 0 0 1 0 17.8M12 3.1a18.5 18.5 0 0 0 0 17.8" stroke="currentColor" stroke-width="1.2"/></svg>
+        <select id="lang-select" class="lang-select" aria-label="Page language" data-i18n-aria="lang.label">
+          <option value="en" lang="en">English</option>
+          <option value="zh-CN" lang="zh-CN">简体中文</option>
+          <option value="zh-TW" lang="zh-TW">繁體中文</option>
+        </select>
+        <svg class="lang-caret" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="m2.6 4.6 3.4 3.4 3.4-3.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme">
+        <svg class="ic-sun" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.6"/><path d="M12 2.6v2.2M12 19.2v2.2M4.2 12H2M22 12h-2.2M5.6 5.6 4 4M20 20l-1.6-1.6M18.4 5.6 20 4M4 20l1.6-1.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        <svg class="ic-moon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 14.2A8.2 8.2 0 1 1 9.8 4a6.6 6.6 0 0 0 10.2 10.2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      </button>
+      <a class="btn btn-ghost btn-sm" href="https://github.com/numdeck-dev/numdeck" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.6c.4.07.55-.17.55-.38l-.01-1.34c-2.22.48-2.69-1.07-2.69-1.07-.37-.93-.9-1.18-.9-1.18-.73-.5.06-.49.06-.49.81.06 1.24.83 1.24.83.72 1.23 1.88.87 2.34.67.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48l-.01 2.19c0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ============ HERO ============ -->
+  <section class="hero">
+    <div class="hero-glow" aria-hidden="true"></div>
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="dot"></span><span data-i18n="hero.eyebrow">Userspace driver · GPL-3.0</span></p>
+        <h1>
+          <span data-i18n="hero.title1">The NumberPad,</span><br>
+          <span class="grad" data-i18n="hero.title2">on stock Linux</span>
+        </h1>
+        <p class="lede">
+          <strong class="lede-lead" data-i18n="hero.ledeLead">Stock kernel, stock ACPI. The NumberPad is driven entirely from userspace.</strong>
+          <span class="lede-sub" data-i18n="hero.lede">It reads contacts from the touchpad through evdev, maps them to numpad cells, and emits keys through uinput. Remove the package and the touchpad behaves as before.</span>
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#install" data-i18n="hero.cta1">Install</a>
+          <a class="btn btn-ghost" href="https://github.com/numdeck-dev/numdeck/releases" target="_blank" rel="noopener" data-i18n="hero.cta2">Download packages</a>
+        </div>
+        <ul class="hero-facts">
+          <li><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3 8.4 3.3 3.3L13 4.6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="hero.fact1">No kernel modules</span></li>
+          <li><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3 8.4 3.3 3.3L13 4.6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="hero.fact2">Single command install</span></li>
+          <li><svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3 8.4 3.3 3.3L13 4.6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span data-i18n="hero.fact3">Packages GPG-signed</span></li>
+        </ul>
+        <div class="quick-cmd" role="group" aria-label="Quick install" data-i18n-aria="a11y.quick">
+          <div class="quick-tabs">
+            <button class="qtab active" type="button" aria-pressed="true" data-qt="sh">apt / dnf / zypper / pacman / apk</button>
+            <button class="qtab" type="button" aria-pressed="false" data-qt="nix">Nix</button>
+          </div>
+          <div class="quick-body">
+            <pre class="qcode" role="group" aria-label="Install command" data-i18n-aria="a11y.code" data-qt-body="sh"><code>curl -fsSL https://raw.githubusercontent.com/numdeck-dev/numdeck/main/repo/install.sh | sudo sh</code></pre>
+            <pre class="qcode hidden" role="group" aria-label="Install command" data-i18n-aria="a11y.code" data-qt-body="nix"><code>nix run github:numdeck-dev/numdeck</code></pre>
+            <button class="copy-btn" type="button" aria-label="Copy" data-i18n-aria="copy"><span data-i18n="copy">Copy</span></button>
+          </div>
+          <p class="quick-note" data-i18n="hero.note">One script adds the repository and installs the package. Step-by-step commands are under <a href="#install">Install</a>.</p>
+        </div>
+      </div>
+
+      <div class="hero-visual" aria-hidden="true">
+        <div class="pad">
+          <div class="pad-head">
+            <span class="pad-led"></span>
+            <span class="pad-title">NumLock</span>
+            <span class="pad-cells">5 cols · 4 rows</span>
+          </div>
+          <div class="pad-grid" id="pad-grid"></div>
+          <div class="pad-foot">
+            <span>62-frame long press</span>
+            <span class="pad-proto">0x0d 14 03 &lt;v&gt;</span>
+          </div>
+        </div>
+        <div class="chain">
+          <span class="chip">evdev</span><i></i><span class="chip">map</span><i></i><span class="chip">uinput</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap distro-strip">
+      <span class="strip-label" data-i18n="strip.label">Packaged for</span>
+      <div class="distros">
+        <span>Fedora</span><span>RHEL · Rocky · Alma</span><span>Ubuntu</span><span>Debian</span><span>openSUSE</span><span>Arch</span><span>Alpine</span><span>Gentoo</span><span>NixOS</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FEATURES ============ -->
+  <section class="section" id="features">
+    <div class="wrap">
+      <header class="sec-head reveal">
+        <span class="sec-kicker" aria-hidden="true">01</span>
+        <h2 data-i18n="feat.title">No kernel or firmware changes</h2>
+        <p data-i18n="feat.sub">No kernel module, no rebuild after a kernel update, no patched firmware tables.</p>
+      </header>
+      <div class="cards">
+        <article class="card reveal">
+          <div class="card-ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3 4 7v6c0 4.4 3.4 7.3 8 8 4.6-.7 8-3.6 8-8V7l-8-4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="m9 12 2.2 2.2L15.5 10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <h3 data-i18n="feat.1.t">Nothing patched</h3>
+          <p data-i18n="feat.1.d">Input comes from evdev, output goes through uinput. No vendor module is replaced and no ACPI object is overridden, so kernel upgrades are unaffected; <code>dnf remove</code> restores the default behaviour.</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3.5 8.5 12 4l8.5 4.5v7L12 20l-8.5-4.5v-7Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M3.5 8.5 12 13l8.5-4.5M12 13v7" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+          <h3 data-i18n="feat.2.t">Each format is built separately</h3>
+          <p data-i18n="feat.2.d">The deb is built on glibc 2.35 and covers Ubuntu 22.04–24.04 with Debian 12/13; the rpm is built on el9 and covers RHEL 9–10, Fedora and openSUSE. CI builds each package inside its own distribution container and checks the artifact metadata before publishing. Repositories and release assets ship both x86_64 and ARM64 (aarch64); the ARM64 build carries no model table and runs a custom layout only.</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-ic"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="m16 16 4.5 4.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div>
+          <h3 data-i18n="feat.3.t">Model recognised at runtime</h3>
+          <p data-i18n="feat.3.d">DMI fields and the touchpad module decide the cell centres and keymap. No package name carries a model, so there is no wrong build to install. <code>numdeck sku</code> shows what it picked and why. The table and the <code>0x0d</code> probe are x86_64-only:
+            the ARM64 build takes the touchpad as reported and follows <code>custom_layouts</code>.</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-ic"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.6"/><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5.2 5.2l1.9 1.9M16.9 16.9l1.9 1.9M18.8 5.2l-1.9 1.9M7.1 16.9l-1.9 1.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+          <h3 data-i18n="feat.4.t">Backlight, four steps and follow</h3>
+          <p data-i18n="feat.4.d">Mirrors the keyboard backlight by default through hidraw FEATURE <code>0x0d</code>. Steps are editable in 0x41–0x48, and manual mode gives <code>bright up|down|cycle</code>.</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-ic"><svg viewBox="0 0 24 24" fill="none"><rect x="4.5" y="10.5" width="15" height="9" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+          <h3 data-i18n="feat.5.t">Layout validation</h3>
+          <p data-i18n="feat.5.d">44 touchpad modules map to keymaps from the vendor INF, each tagged verified, family or unsupported. A panel that is not in the table is refused at startup unless you supply your own layout.</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-ic"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 12h17M12 3.5c2.4 2.3 3.6 5.3 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.3-3.6-8.5S9.6 5.8 12 3.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+          <h3 data-i18n="feat.6.t">English and two Chinese locales</h3>
+          <p data-i18n="feat.6.d">Interface and messages ship in en, zh-CN and zh-TW; the man page is English only. The locale comes from <code>NUMDECK_LANG</code>, <code>--lang</code>, the config file, then the system locale.</p>
+        </article>
+        <article class="card reveal">
+          <div class="card-ic"><svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="14" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M7.5 9.5h2M11 9.5h2M14.5 9.5h2M7.5 13.5h2M11 13.5h2M14.5 13.5h2M9 17h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+          <h3 data-i18n="feat.7.t">Works beyond the model table</h3>
+          <p data-i18n="feat.7.d">Custom keymaps, a rewritten FEATURE report, hard-press toggling and global hotkeys live in the same config file as <code>custom_layouts</code>, <code>led_proto</code>, <code>pressure_switch</code> and <code>hotkeys</code>. A layout can inherit a built-in table and rebind only what differs.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ HOW ============ -->
+  <section class="section alt" id="how">
+    <div class="wrap">
+      <header class="sec-head reveal">
+        <span class="sec-kicker" aria-hidden="true">02</span>
+        <h2 data-i18n="how.title">How it works</h2>
+        <p data-i18n="how.sub">Three stages in one userspace process; no kernel code is involved.</p>
+      </header>
+      <ol class="steps">
+        <li class="reveal">
+          <span class="step-n">01</span>
+          <h3 data-i18n="how.1.t">Grab the panel</h3>
+          <p data-i18n="how.1.d">The driver opens and grabs the multitouch evdev node, so contacts reach the driver and the desktop pointer is unaffected.</p>
+        </li>
+        <li class="reveal">
+          <span class="step-n">02</span>
+          <h3 data-i18n="how.2.t">Map contacts to cells</h3>
+          <p data-i18n="how.2.d">Cell centres, press thresholds and the 62-frame long press come from <code>AlgoParameters</code> in the vendor file <code>AsusNUMPADFilter.inf</code>, adjusted per generation.</p>
+        </li>
+        <li class="reveal">
+          <span class="step-n">03</span>
+          <h3 data-i18n="how.3.t">Inject keys</h3>
+          <p data-i18n="how.3.d">A virtual keyboard is created through uinput and emits KP_* events; the backlight byte goes out over hidraw or i2c afterwards.</p>
+        </li>
+      </ol>
+      <div class="term reveal">
+        <div class="term-bar"><span></span><span></span><span></span><em>numdeck check</em></div>
+        <pre><code><span class="t-dim">$</span> numdeck check
+Device: touchpad detected, using real resolution
+Config summary: layout=GH3XLNDZ key_mode=numpad hold 62 frames=496ms idle 120s mixed=auto numlock=auto
+Backlight channel hidraw (FEATURE 0x0d, 4 steps)
+<span class="t-ok">Conclusion: config and geometry are self-consistent.</span></code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ MODELS ============ -->
+  <section class="section" id="models">
+    <div class="wrap">
+      <header class="sec-head reveal">
+        <span class="sec-kicker" aria-hidden="true">03</span>
+        <h2 data-i18n="models.title">Supported models</h2>
+        <p data-i18n="models.sub">The list below is the support range. A model id switches parameters manually; machines outside the list are refused at startup, as are listed models whose touchpad carries no NumberPad hardware. This table ships in the x86_64 build only.</p>
+      </header>
+      <div class="model-shots reveal">
+        <figure>
+          <img src="assets/models/g533.webp" alt="ROG Strix SCAR 15 / G15 (2022)" width="900" height="645" loading="lazy" decoding="async">
+          <figcaption>
+            <code>g533</code><span data-i18n="models.m533">ROG Strix SCAR 15 / Strix G15 (2022): G533*, G513*</span>
+            <em data-i18n="models.n533">2021 variants ship without a NumberPad and are not matched</em>
+          </figcaption>
+        </figure>
+        <figure>
+          <img src="assets/models/g614.webp" alt="ROG Strix SCAR 16 / G16 (2023)" width="900" height="690" loading="lazy" decoding="async">
+          <figcaption>
+            <code>g614</code><span data-i18n="models.m614">ROG Strix SCAR 16 / Strix G16 (2023–2024): G614, G634</span>
+            <em data-i18n="models.n614">Verified on G634JY; the Chinese-market Strix G (魔霸新锐) is a 4-zone RGB SKU and carries no pad</em>
+          </figcaption>
+        </figure>
+        <figure>
+          <img src="assets/models/g615.webp" alt="ROG Strix SCAR 16 (2025)" width="900" height="716" loading="lazy" decoding="async">
+          <figcaption>
+            <code>g615</code><span data-i18n="models.m615">ROG Strix SCAR 16 / Strix G16 (2025–2026): G615, G635</span>
+            <em data-i18n="models.n615">2026 keeps the same codes; the 2025 Chinese-market Strix G (魔霸新锐) is 4-zone RGB as well</em>
+          </figcaption>
+        </figure>
+        <figure>
+          <img src="assets/models/gx550.webp" alt="ROG Zephyrus Duo 16 (GX650)" width="900" height="655" loading="lazy" decoding="async">
+          <figcaption>
+            <code>gx550</code><span data-i18n="models.mgx">ROG Zephyrus Duo 15 / Duo 15 SE / Duo 16 (2020–2023): GX550, GX551, GX650</span>
+            <em data-i18n="models.ngx">Side-mounted pad; number mode is a keyboard key</em>
+          </figcaption>
+        </figure>
+        <figure>
+          <img src="assets/models/ux582.webp" alt="ASUS Zenbook Duo (UX582 / UX482)" width="900" height="563" loading="lazy" decoding="async">
+          <figcaption>
+            <code>ux582</code><span data-i18n="models.mux">ASUS Zenbook Duo 14 / Zenbook Pro Duo 15 OLED (2020–2021): UX582, UX482</span>
+            <em data-i18n="models.nux">Side-mounted pad; number mode is a keyboard key</em>
+          </figcaption>
+        </figure>
+      </div>
+      <p class="fine reveal" data-i18n="models.shots">Product images from the ASUS product pages, one for each model above.</p>
+      <p class="fine reveal" data-i18n="models.gate">
+        The touchpad hardware is the final check. After the model code matches, the driver looks for HID FEATURE
+        report <code>0x0d</code> and refuses to start without it: a 4-zone RGB configuration of a listed
+        model shares the touchpad module but has no icon area, so the LED pattern has no target cell. Both checks above (model table, FEATURE <code>0x0d</code> probe) belong to the
+        x86_64 build; the ARM64 build skips them and takes the touchpad as it is.
+      </p>
+      <p class="fine reveal" data-i18n="models.fine">
+        The DMI model code is authoritative; marketing names are for orientation only. Pin a model with
+        <code>numdeck sku g614</code> when the hardware cannot be read reliably, and <code>numdeck sku auto</code> to go back —
+        model ids exist in the x86_64 build only.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ INSTALL ============ -->
+  <section class="section alt" id="install">
+    <div class="wrap">
+      <header class="sec-head reveal">
+        <span class="sec-kicker" aria-hidden="true">04</span>
+        <h2 data-i18n="inst.title">Install</h2>
+        <p data-i18n="inst.sub">Add the repository once; upgrades follow your package manager. The index is GPG signed and the key ships with it.</p>
+      </header>
+
+      <div class="oneline reveal">
+        <pre class="mini"><code>curl -fsSL https://raw.githubusercontent.com/numdeck-dev/numdeck/main/repo/install.sh | sudo sh</code></pre>
+        <p data-i18n="inst.oneline.n">Detects the distribution, imports the signing key, writes the repository and installs the package. Append <code>--repo-only</code> to write the repository without installing.</p>
+      </div>
+
+      <div class="install reveal">
+        <div class="install-head">
+          <div class="tabs" role="tablist">
+            <button type="button" class="tab active" role="tab" id="tab-apt" aria-selected="true" aria-controls="pane-apt" data-tab="apt">apt</button>
+            <button type="button" class="tab" role="tab" id="tab-dnf" aria-selected="false" aria-controls="pane-dnf" data-tab="dnf">dnf</button>
+            <button type="button" class="tab" role="tab" id="tab-zypper" aria-selected="false" aria-controls="pane-zypper" data-tab="zypper">zypper</button>
+            <button type="button" class="tab" role="tab" id="tab-pacman" aria-selected="false" aria-controls="pane-pacman" data-tab="pacman">pacman</button>
+            <button type="button" class="tab" role="tab" id="tab-apk" aria-selected="false" aria-controls="pane-apk" data-tab="apk">apk</button>
+            <button type="button" class="tab" role="tab" id="tab-nix" aria-selected="false" aria-controls="pane-nix" data-tab="nix">nix</button>
+          </div>
+          <button class="copy-btn copy-pane" type="button" aria-label="Copy current command" data-i18n-aria="copy.pane"><span data-i18n="copy">Copy</span></button>
+        </div>
+
+        <div class="pane" role="tabpanel" id="pane-apt" aria-labelledby="tab-apt" data-pane="apt">
+          <p class="pane-note" data-i18n="inst.apt.n">Debian 12/13, Ubuntu 22.04–24.04, Mint 21+</p>
+          <pre><code>sudo install -d -m 0755 /usr/share/keyrings
+curl -fsSL https://raw.githubusercontent.com/numdeck-dev/numdeck/main/repo/keys/numdeck-repo.gpg \
+  | sudo tee /usr/share/keyrings/numdeck.gpg &gt;/dev/null
+echo "deb [signed-by=/usr/share/keyrings/numdeck.gpg] https://raw.githubusercontent.com/numdeck-dev/numdeck/main/repo/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/numdeck.list
+sudo apt update
+sudo apt install numdeck</code></pre>
+        </div>
+
+        <div class="pane hidden" role="tabpanel" id="pane-dnf" aria-labelledby="tab-dnf" data-pane="dnf">
+          <p class="pane-note" data-i18n="inst.dnf.n">Fedora, RHEL / Rocky / Alma 9–10</p>
+          <pre><code>sudo rpm --import https://raw.githubusercontent.com/numdeck-dev/numdeck/main/repo/keys/numdeck-repo.asc
+sudo tee /etc/yum.repos.d/numdeck.repo &gt;/dev/null &lt;&lt;'EOF'
+[numdeck]
+name=numdeck
+baseurl=https://raw.githubusercontent.com/numdeck-dev/numdeck/main/repo/rpm/$basearch
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://raw.githubusercontent.com/numdeck-dev/numdeck/main/repo/keys/numdeck-repo.asc
+EOF
+sudo dnf install numdeck</code></pre>
+        </div>
+
+        <div class="pane hidden" role="tabpanel" id="pane-zypper" aria-labelledby="tab-zypper" data-pane="zypper">
+          <p class="pane-note" data-i18n="inst.zypper.n">openSUSE Leap 16 and Tumbleweed read the same rpm-md repo</p>
+          <pre><code>sudo rpm --import https://raw.githubusercontent.com/numdeck-dev/numdeck/main/repo/keys/numdeck-repo.asc
+sudo tee /etc/zypp/repos.d/numdeck.repo &gt;/dev/null &lt;&lt;'EOF'
+[numdeck]
+name=numdeck
+enabled=1
+autorefresh=1
+type=rpm-md
+baseurl=https://raw.githubusercontent.com/numdeck-dev/numdeck/main/repo/rpm/$basearch
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://raw.githubusercontent.com/numdeck-dev/numdeck/main/repo/keys/numdeck-repo.asc
+EOF
+sudo zypper refresh numdeck
+sudo zypper install numdeck</code></pre>
+        </div>
+
+        <div class="pane hidden" role="tabpanel" id="pane-pacman" aria-labelledby="tab-pacman" data-pane="pacman">
+          <p class="pane-note" data-i18n="inst.pacman.n">Arch, Manjaro, EndeavourOS — AUR source package is <code>numdeck</code></p>
+          <pre><code>curl -fsSL https://raw.githubusercontent.com/numdeck-dev/numdeck/main/repo/keys/numdeck-repo.asc -o /tmp/numdeck.asc
+sudo pacman-key --add /tmp/numdeck.asc
+sudo pacman-key --lsign-key 79F282157F2D3FF8E3C6806314C2BF611986E168
+sudo tee -a /etc/pacman.conf &gt;/dev/null &lt;&lt;'EOF'
+
+[numdeck]
+SigLevel = Required DatabaseRequired
+Server = https://raw.githubusercontent.com/numdeck-dev/numdeck/main/repo/arch/$arch
+EOF
+sudo pacman -Syu numdeck</code></pre>
+        </div>
+
+        <div class="pane hidden" role="tabpanel" id="pane-apk" aria-labelledby="tab-apk" data-pane="apk">
+          <p class="pane-note" data-i18n="inst.apk.n">Alpine 3.19+ (musl build)</p>
+          <pre><code>curl -fsSL https://raw.githubusercontent.com/numdeck-dev/numdeck/main/repo/keys/numdeck-apk.rsa.pub \
+  | sudo tee /etc/apk/keys/numdeck-apk.rsa.pub &gt;/dev/null
+echo "https://raw.githubusercontent.com/numdeck-dev/numdeck/main/repo/alpine/$(apk --print-arch)" | sudo tee -a /etc/apk/repositories
+sudo apk update
+sudo apk add numdeck</code></pre>
+        </div>
+
+        <div class="pane hidden" role="tabpanel" id="pane-nix" aria-labelledby="tab-nix" data-pane="nix">
+          <p class="pane-note" data-i18n="inst.nix.n">Flake, no repo needed</p>
+          <pre><code>nix run github:numdeck-dev/numdeck
+
+# NixOS
+services.numdeck.enable = true;</code></pre>
+        </div>
+      </div>
+
+      <p class="arch-note reveal" data-i18n="inst.arch">These repositories ship <code>x86_64</code>/<code>amd64</code> and <code>ARM64</code>/<code>aarch64</code> builds. On other architectures, build from source: <code>cargo build --release</code>. The ARM64 package carries no model
+        table: bind your touchpad module and keymap under <code>custom_layouts</code> in
+        <code>/etc/numdeck/numdeck.json</code> before the first <code>run</code>.</p>
+
+      <p class="notice reveal" data-i18n="inst.notice">
+        Coming from <code>RunningVAN/numdeck</code>? The package name is the same but the source
+        differs, so an in-place upgrade does not happen: run <code>sudo apt remove numdeck</code>
+        (or <code>dnf remove</code>) once before switching. These repositories now carry 1.0.0 and later
+        only, and 1.0.0 sorts below the old 1.2.4, so no upgrade prompt will appear.
+      </p>
+
+      <div class="other-ways reveal">
+        <div>
+          <h3 data-i18n="inst.other1.t">Gentoo and plain tarball</h3>
+          <p data-i18n="inst.other1.d">An ebuild-friendly static tarball is on Releases; so are deb, rpm, pkg.tar.zst and apk for offline installs.</p>
+          <a class="link" href="https://github.com/numdeck-dev/numdeck/releases" target="_blank" rel="noopener" data-i18n="inst.other1.a">Releases</a>
+        </div>
+        <div>
+          <h3 data-i18n="inst.other2.t">Then verify</h3>
+          <p data-i18n="inst.other2.d">Read-only self test: devices, model, layout support level and the backlight channel.</p>
+          <pre class="mini"><code>numdeck check</code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ USAGE ============ -->
+  <section class="section" id="usage">
+    <div class="wrap">
+      <header class="sec-head reveal">
+        <span class="sec-kicker" aria-hidden="true">05</span>
+        <h2 data-i18n="use.title">Everyday commands</h2>
+        <p data-i18n="use.sub">The daemon runs as a systemd unit; the CLI is for checking and tuning.</p>
+      </header>
+      <div class="use-grid">
+        <div class="use-card reveal">
+          <h3 data-i18n="use.a.t">Run and check</h3>
+          <pre><code>numdeck check          # read-only self test
+numdeck dump           # raw event stream
+numdeck run            # foreground
+numdeck --dump-config  # effective config</code></pre>
+        </div>
+        <div class="use-card reveal">
+          <h3 data-i18n="use.b.t">Backlight</h3>
+          <pre><code>numdeck bright up|down|cycle
+numdeck bright follow on|off
+numdeck levels 2 0x46
+numdeck led on|off|0x41</code></pre>
+        </div>
+        <div class="use-card reveal">
+          <h3 data-i18n="use.c.t">Layout and language</h3>
+          <pre><code>numdeck layout --ids
+numdeck layout auto
+numdeck lang zh-CN
+numdeck --lang en check</code></pre>
+        </div>
+        <div class="use-card reveal">
+          <h3 data-i18n="use.d.t">Model and calibration</h3>
+          <pre><code>numdeck sku                    # detected model and its parameters
+numdeck sku g614   # pin a model (x86_64 build)
+numdeck calibrate --samples samples.json
+numdeck calibrate --samples samples.json --write</code></pre>
+        </div>
+      </div>
+      <p class="fine reveal" data-i18n="use.fine">
+        Config lives in <code>~/.config/numdeck/numdeck.json</code>, or <code>/etc/numdeck/</code> under root.
+        Keys left out keep the vendor defaults — <code>numlock</code>, <code>mixed_mode</code>, <code>grab</code>,
+        <code>follow_keyboard_brightness</code>, <code>allow_unverified_layout</code> and the brightness tables.
+      </p>
+      <figure class="gui-shot reveal">
+        <img src="assets/screenshots/gui-main.webp" alt="numdeck-gui control center on Linux: HID interface cards on the left, lighting and driver config tabs on the right" width="1180" height="900" loading="lazy" decoding="async">
+        <figcaption data-i18n="use.gui">
+          The optional egui window (<code>numdeck-gui</code>) writes the same FEATURE <code>0x0d</code> report.
+          On Linux it is the whole control center in seven tabs: lighting — including the keyboard's four brightness
+          steps mapped onto touchpad levels, editable step by step — every driver config field, system state with
+          unit control, a form for each <code>numdeck</code> subcommand, the extension tab for custom layouts,
+          LED report, hard-press switching and global hotkeys, the calibration tab for grids and manual calibration
+          on machines outside the table, and the window's own settings. The
+          command tab runs the same binary, so the two never drift apart. The window groups everything into cards, follows the system light/dark theme, and steps brightness with a per-step bar instead of a slider.
+        </figcaption>
+      </figure>
+      <figure class="gui-shot compact reveal">
+        <img src="assets/screenshots/gui-win.webp" alt="numdeck-gui lighting window on Windows" width="980" height="780" loading="lazy" decoding="async">
+        <figcaption data-i18n="use.guiWin">
+          On Windows the window only covers light: interfaces, steps, NumLock follow, write log. Numpad input is
+          left to the vendor driver.
+        </figcaption>
+      </figure>
+
+      <div class="gui-strip reveal">
+        <figure>
+          <img src="assets/screenshots/gui-extend.webp" alt="Extension tab: custom layouts, LED report, hard-press toggle, global hotkeys" width="1180" height="900" loading="lazy" decoding="async">
+          <figcaption data-i18n="use.shot1">Extension tab: custom layouts, a rewritten LED report, hard-press switching and global hotkeys.</figcaption>
+        </figure>
+        <figure>
+          <img src="assets/screenshots/gui-calib.webp" alt="Calibrate tab: partition, manual calibration, sample replay, config snippet" width="1180" height="900" loading="lazy" decoding="async">
+          <figcaption data-i18n="use.shot2">Calibrate tab: partition, manual calibration, sample replay and the matching config snippet.</figcaption>
+        </figure>
+        <figure>
+          <img src="assets/screenshots/gui-driver.webp" alt="Driver tab: every config field with the vendor default beside it" width="1180" height="900" loading="lazy" decoding="async">
+          <figcaption data-i18n="use.shot3">Driver tab: every config field, with the value the vendor INF would use shown beside it.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FAQ ============ -->
+  <section class="section alt" id="faq">
+    <div class="wrap narrow">
+      <header class="sec-head reveal">
+        <span class="sec-kicker" aria-hidden="true">06</span>
+        <h2 data-i18n="faq.title">Questions</h2>
+      </header>
+      <div class="faq">
+        <details class="reveal">
+          <summary data-i18n="faq.1.q">Does this replace asusctl or the kernel's hid-asus?</summary>
+          <p data-i18n="faq.1.d">No. The two run in parallel: it grabs the touchpad evdev node and adds a virtual keyboard. Keyboard backlight control from asusctl keeps working, and uninstalling the package removes only the numpad function.</p>
+        </details>
+        <details class="reveal">
+          <summary data-i18n="faq.2.q">Will my touchpad stop working as a pointer?</summary>
+          <p data-i18n="faq.2.d">Only while numpad mode is on. With <code>grab</code> off, clicks still reach the desktop; with <code>mixed_mode</code> on, keys and pointer work together once <code>/dev/uinput</code> is available.</p>
+        </details>
+        <details class="reveal">
+          <summary data-i18n="faq.3.q">My model is not in the table, or it has no NumberPad — will it work?</summary>
+          <p data-i18n="faq.3.d">A machine that matches no row is refused at startup: the check exits with code 3 and prints the supported models, it does not fall back to another machine's parameters. <code>--sku</code> or <code>numdeck sku &lt;id&gt;</code> overrides the detection, and <code>numdeck check</code> prints what to send along. A listed model without NumberPad hardware stops at the same exit code 3: the driver requires HID FEATURE report <code>0x0d</code>, which a 4-zone RGB configuration does not provide. None of this applies to the ARM64 build: it has no table to
+          miss and no <code>0x0d</code> gate, so a machine outside the list is not refused.</p>
+        </details>
+        <details class="reveal">
+          <summary data-i18n="faq.4.q">Where is the signing key, and how do I check it?</summary>
+          <p data-i18n="faq.4.d">One GPG key signs the apt, rpm and pacman indexes; Alpine packages are signed with a separate RSA key. Both public keys ship in the repository under <code>keys/</code>, so <code>install.sh</code> imports them without a second download. Fingerprint: <code>79F2 8215 7F2D 3FF8 E3C6 8063 14C2 BF61 1986 E168</code>; details in <code>docs/signing.md</code>.</p>
+        </details>
+        <details class="reveal">
+          <summary data-i18n="faq.5.q">Dual-screen Zephyrus Duo and Zenbook Duo?</summary>
+          <p data-i18n="faq.5.d">Supported, with a difference: the pad is a vertical strip to the right of the keyboard, so number mode is switched by a dedicated keyboard key instead of the 62-frame long press. Use <code>numlock</code> to pin the mode.</p>
+        </details>
+        <details class="reveal">
+          <summary data-i18n="faq.6.q">Do I need root, or a reboot?</summary>
+          <p data-i18n="faq.6.d">Neither. The daemon runs as a <code>systemd --user</code> unit; udev grants the touchpad and backlight nodes to the session. Log out and in once after the first install so the unit and the udev rule are picked up.</p>
+        </details>
+        <details class="reveal">
+          <summary data-i18n="faq.7.q">Does Wayland or X11 make a difference?</summary>
+          <p data-i18n="faq.7.d">No. The daemon only talks to evdev and uinput, so it behaves the same under Wayland, X11 and a bare TTY. The actual constraint is the session: without access to <code>/dev/uinput</code>, key events are discarded.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="foot">
+    <div class="wrap foot-grid">
+      <div>
+        <div class="brand foot-brand">
+          <span class="brand-mark" aria-hidden="true">
+            <img src="assets/logo.svg" alt="" width="26" height="26" decoding="async" loading="lazy">
+          </span>
+          <span class="brand-name">numdeck</span>
+        </div>
+        <p class="foot-slogan" data-i18n="foot.slogan">The NumberPad, native on Linux.</p>
+        <p class="foot-note" data-i18n="foot.note">Userspace driver for the ASUS NumberPad. GPL-3.0-or-later.</p>
+        <ul class="foot-meta">
+          <li>v1.0.3</li>
+          <li>GPL-3.0-or-later</li>
+          <li data-i18n="foot.meta1">No kernel module</li>
+          <li data-i18n="foot.meta2">6 package formats</li>
+        </ul>
+      </div>
+      <div class="foot-col">
+        <h3 data-i18n="foot.project">Project</h3>
+        <a href="https://github.com/numdeck-dev/numdeck" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/numdeck-dev/numdeck/releases" target="_blank" rel="noopener">Releases</a>
+        <a href="https://github.com/numdeck-dev/numdeck/blob/main/docs/machines.md" target="_blank" rel="noopener" data-i18n="foot.machines">Model notes</a>
+        <a href="https://github.com/numdeck-dev/numdeck/issues" target="_blank" rel="noopener">Issues</a>
+      </div>
+      <div class="foot-col">
+        <h3 data-i18n="foot.docs">Docs</h3>
+        <a href="https://github.com/numdeck-dev/numdeck#readme" target="_blank" rel="noopener">README</a>
+        <a href="https://github.com/numdeck-dev/numdeck/blob/main/docs/install.md" target="_blank" rel="noopener" data-i18n="foot.install">Install guide</a>
+        <a href="https://github.com/numdeck-dev/numdeck/blob/main/docs/release-notes/1.0.3.md" target="_blank" rel="noopener" data-i18n="foot.verify">Release notes</a>
+        <a href="https://github.com/numdeck-dev/numdeck/blob/main/README.zh-CN.md" target="_blank" rel="noopener" hreflang="zh-Hans">README · 简体</a>
+        <a href="https://github.com/numdeck-dev/numdeck/blob/main/README.zh-TW.md" target="_blank" rel="noopener" hreflang="zh-Hant">README · 繁體</a>
+      </div>
+    </div>
+    <div class="wrap foot-bottom">
+      <span data-i18n="foot.right">© 2026 numdeck · GPL-3.0-or-later</span>
+      <span class="foot-src" data-i18n="foot.src">Static site · no trackers</span>
+    </div>
+  </footer>
+
+</main>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
